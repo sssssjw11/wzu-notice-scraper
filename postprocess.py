@@ -13,9 +13,11 @@
 
 用法：
   python postprocess.py
+  python postprocess.py -h       # 查看用法（任何前置检查之前生效）
 """
 from __future__ import annotations
 
+import argparse
 import html
 import re
 from collections import defaultdict
@@ -257,8 +259,20 @@ apply();
     return p, len(ok), len(units), n_valid, n_cap, n_dead, total_imgs
 
 
+def build_parser():
+    return argparse.ArgumentParser(
+        description="第 5 步：把「正文.html」的图片外链改成本地路径，并生成离线索引页",
+        epilog="前置：finalize.py 已跑过（附件甄别结果会被索引页按三种状态渲染）\n"
+               "下一步：python verify.py   # 完整性核对",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+
 def main():
     setup_console()
+    # 先解析参数：--help 必须在任何前置检查之前生效，否则新 clone 里看不到用法。
+    build_parser().parse_args()
+
     recs, bad = load_jsonl(MANIFEST)
     if not recs:
         print("download/_manifest.jsonl 为空，先跑 python download.py")

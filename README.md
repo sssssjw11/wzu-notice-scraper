@@ -65,6 +65,9 @@ python pack.py                  # 7. 打包成 zip
 | — | `probe_sites.py` | 探测各站在当前网络下的可达性 | `out/site_reach.json` |
 | — | `build_reach_list.py` | 可达性结果整理成清单 | `out/外网可访问站点清单.md`、`.csv` |
 
+11 个脚本都支持 `-h/--help`，用法说明与「前置依赖是哪一步」会在参数解析阶段就打印出来，
+不需要先跑通前面的步骤才能看到帮助。
+
 `extract_footer.py` 与 `scrape.py` 之间还有个人工可选环节：如果某些站的入口用页脚
 给的地址抓不到内容，在 `scrape_extra.py` 的 `TARGETS` 里补上正确的栏目地址即可。
 

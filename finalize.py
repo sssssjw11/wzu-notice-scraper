@@ -15,9 +15,11 @@
 
 用法：
   python finalize.py
+  python finalize.py -h          # 查看用法（任何前置检查之前生效）
 """
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
 from collections import Counter, OrderedDict
@@ -77,8 +79,20 @@ def backfill_counts(r, d):
     r["attach_failed"] = sum(1 for a in atts if not a.get("file"))
 
 
+def build_parser():
+    return argparse.ArgumentParser(
+        description="第 6 步：收尾整理 —— manifest 按 URL 去重 + 附件真伪甄别"
+                    "（可反复执行，标记不会叠加）",
+        epilog="下一步：python postprocess.py   # 本地化图片 + 生成离线索引页",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+
 def main():
     setup_console()
+    # 先解析参数：--help 必须在任何前置检查之前生效，否则新 clone 里看不到用法。
+    build_parser().parse_args()
+
     if not MANIFEST.is_file():
         print("download/_manifest.jsonl 不存在，先跑 python download.py")
         return

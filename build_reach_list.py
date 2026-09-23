@@ -6,9 +6,11 @@
 
 用法：
   python build_reach_list.py
+  python build_reach_list.py -h  # 查看用法（任何前置检查之前生效）
 """
 from __future__ import annotations
 
+import argparse
 import csv
 
 from _common import OUT, SITES_JSON, load_json, load_sites, setup_console
@@ -18,8 +20,18 @@ GORDER = ["官网", "学院", "部门", "其他"]
 GNAME = {"官网": "官网", "学院": "学院", "部门": "部门 / 机关", "其他": "其他单位"}
 
 
+def build_parser():
+    return argparse.ArgumentParser(
+        description="把可达性探测结果（out/site_reach.json）整理成 Markdown + CSV 清单",
+        epilog="前置：python probe_sites.py   # 先生成探测结果",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+
 def main():
     setup_console()
+    # 先解析参数：--help 必须在任何前置检查之前生效，否则新 clone 里看不到用法。
+    build_parser().parse_args()
 
     reach = load_json(OUT / "site_reach.json")
     if not reach:
