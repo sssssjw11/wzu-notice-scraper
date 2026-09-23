@@ -6,6 +6,21 @@
 面向的是一类很常见的场景：一个学校/单位的官网群由几十个二级子站组成，通知散落在
 各处，官方没有统一的检索入口。本项目把「散落 → 汇总 → 离线可用」这条链路做完整。
 
+## Attention Desk 工作台
+
+仓库现已包含 `attention-desk/` 本地 Web 工作台，可把微信群 `messages.json` 整理成
+按截止状态和优先级排序的行动队列，支持 Jev 结构化判断、指定日期范围、完成归档和撤销。
+原有学院官网抓取脚本保持独立，仍可按下文命令单独运行。
+
+```powershell
+cd attention-desk
+.\start.ps1 -Install
+```
+
+首次打开使用 `data/demo_messages.json` 合成演示记录。真实微信聊天、下载附件、
+API 密钥和运行时状态均不进入公开仓库。工作台用法见
+[attention-desk/README.md](attention-desk/README.md)。
+
 ---
 
 ## 设计原则

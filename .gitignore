@@ -65,3 +65,16 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Attention Desk local/private state and frontend output
+data/contacts/
+data/attention-desk/
+data/raw/
+vendor/
+reports/
+attention-desk/node_modules/
+attention-desk/dist/
+attention-desk/output/
+.env
+.env.*
+*.db
