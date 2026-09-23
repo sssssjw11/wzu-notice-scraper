@@ -25,7 +25,7 @@
 ## 快速开始
 
 ```bash
-pip install requests beautifulsoup4 lxml
+pip install -r requirements.txt   # requests / beautifulsoup4 / lxml
 
 python extract_footer.py        # 1. 解析官网页脚 -> sites.json
 python scrape.py                # 2. 抓取通知条目 -> out/notices.csv  （约 30 分钟）
@@ -38,7 +38,7 @@ python verify.py --days 30      # 6. 完整性核对（交付前必跑）
 python pack.py                  # 7. 打包成 zip
 ```
 
-全量抓取约 1600 条通知，串行模式下耗时较长，属预期。**任何一步都可以随时中断，
+全量抓取约 1650 条通知，串行模式下耗时较长，属预期。**任何一步都可以随时中断，
 重跑会自动跳过已完成部分**（见下文「断点续跑」）。
 
 先跑通再说：`python scrape.py --limit 5` 和 `python download.py --limit 8`
@@ -53,7 +53,7 @@ python pack.py                  # 7. 打包成 zip
 | # | 脚本 | 作用 | 主要产出 |
 |---|---|---|---|
 | — | `_common.py` | 公共层：路径、请求会话、限速、日期解析、日志 | — |
-| 1 | `extract_footer.py` | 解析官网页脚，提取各二级单位官网地址 | `sites.json` |
+| 1 | `extract_footer.py` | 解析官网页脚，提取各二级单位官网地址 | 根目录 `sites.json`（运行时） |
 | 2 | `scrape.py` | 抓取各站「通知公告」条目 | `out/notices.csv`、`out/site_*.json` |
 | 2.5 | `report.py` | 把抓取结果渲染成总览报告 | `out/温大各部门通知汇总.html` |
 | 3 | `scrape_extra.py` | 补抓首轮取不到通知的特殊站点 | 覆盖 `out/site_*.json` |
@@ -118,6 +118,18 @@ python download.py                                    # 不加参数 = 全部
 - **附件**：统一走 `/system/_content/download.jsp?urltype=news.DownloadAttachUrl&...`，
   文件名只能从响应头 `Content-Disposition` 取（URL 本身没有扩展名）。
 
+### 日期提取的两个已知口径
+
+`norm_date()`（`_common.py`）按「完整日期 → `YY.MM.DD` → 月-日」三级降级匹配。有两点需要知道：
+
+1. **只有「月-日」时补当前年**。少数小站的列表页日期节点不带年份
+   （如 `09-25`），此时会补成当前年。副作用是：一份 2023 年的老通知可能因为
+   被补成 `2026-09-25` 而误入「近 30 天」的范围。影响面很小，但用
+   `--since/--until` 收窄范围时值得留意。
+2. **34 条通知没有日期**（占 1647 条的 2%）。集中在 `温州民俗博物馆`、
+   `浙江省皮革工程重点实验室` 等自建小站 —— 它们的列表页压根没有日期节点，
+   属上游数据缺失，不是解析失效。这些条目日期留空，不参与时间范围过滤。
+
 ### 三道坎
 
 博达系的附件与正文有三种「取不到」的形态，本项目都实测遇到并做了处理：
@@ -136,11 +148,22 @@ python download.py                                    # 不加参数 = 全部
 
 ## 产出结构
 
+### 仓库根目录
+
+```
+sites.json                 各二级单位官网清单（extract_footer.py 生成，不入库）
+data/sites.json            同一份清单的版本化副本，随仓库分发
+```
+
+`sites.json` 是运行时产物（已列入 `.gitignore`），`data/sites.json` 是入库的分发副本。
+`_common.load_sites()` 优先读后者 —— **所以 clone 下来不必先联网跑 `extract_footer.py`，
+直接跑 `scrape.py` 就能用**。想更新站点清单，跑一次 `extract_footer.py`，
+再把根目录那份复制到 `data/`。
+
 ### `out/`
 
 ```
 notices.csv                全部通知条目（类别,单位,栏目,发布日期,标题,链接,站点,站点状态）
-sites.json                 各二级单位官网清单
 sites_result.json          每个站点的抓取明细与日志
 site_*.json                单站点结果（断点续跑依据）
 温大各部门通知汇总.html      总览报告（可搜索/筛选）
@@ -184,16 +207,17 @@ cd download && python -m http.server 8765 --bind 127.0.0.1
 manifest 里 456 行有 4 行是重复写入；14 个 `.jsp` 假附件混在附件目录里；
 2 张配图被误报为「本地缺失」——实际是原站本来就 404，属上游问题。
 
-所以最终结论会把「本项目的失败」和「原站限制」严格分开统计，后者不计入失败：
+所以最终结论会把「本项目的失败」和「原站限制」严格分开统计，后者不计入失败。
+以下是本项目实际交付时的核对结论（范围内 452 条通知）：
 
 ```
 PASS — 范围内所有通知均完整落地，无缺失文件、无零字节文件。
 
 属原站限制、不计入失败的项目：
-  · N 篇通知需统一身份认证（CAS），未能下载
-  · N 个附件原站要求图形验证码，仅取到中间页
-  · N 个附件原站已失效（服务器返回空内容）
-  · N 张配图在原站为 404，已失效
+  · 36 篇通知需统一身份认证（CAS），未能下载
+  · 13 个附件原站要求图形验证码，仅取到中间页
+  · 1 个附件原站已失效（服务器返回空内容）
+  · 2 张配图在原站为 404，已失效
 ```
 
 ---
@@ -221,7 +245,10 @@ python build_reach_list.py   # 整理成 Markdown + CSV 清单
 - **列表页深度有限**。单站点最多 3 个列表页，这意味着更新很慢的站点只能取到
   最近几条。调 `--max-lists` 可以加深，但不建议对子站加压。
 - **`out/` 与 `download/` 不入库**（见 `.gitignore`）。仓库里只有脚本，数据在本地生成。
-- 站点改版会导致解析失效。解析逻辑集中在 `scrape.py` 的
+- **依赖只有三个**：`requests`、`beautifulsoup4`、`lxml`（见 `requirements.txt`）。
+  `lxml` 容易漏装 —— 代码里所有 `BeautifulSoup` 调用都显式指定 `"lxml"` 解析器，
+  缺它会报 `FeatureNotFound: Couldn't find a tree builder`。其余全部是标准库。
+- **站点改版会导致解析失效**。解析逻辑集中在 `scrape.py` 的
   `find_notice_blocks` / `pick_list_pages` / `extract_items` 和 `download.py` 的
   `find_content_node`，改版时改这几个函数即可。
 
