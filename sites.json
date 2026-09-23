@@ -1,0 +1,279 @@
+{
+  "学院": [
+    {
+      "name": "经济与管理学院",
+      "url": "https://ems.wzu.edu.cn/"
+    },
+    {
+      "name": "法学院（纪检监察学院）",
+      "url": "https://fxy.wzu.edu.cn/"
+    },
+    {
+      "name": "马克思主义学院",
+      "url": "https://marx.wzu.edu.cn"
+    },
+    {
+      "name": "教育学院（教师教育学院）",
+      "url": "https://jsjyxy.wzu.edu.cn/"
+    },
+    {
+      "name": "体育与健康学院",
+      "url": "https://tyxy.wzu.edu.cn/"
+    },
+    {
+      "name": "人文学院",
+      "url": "https://hum.wzu.edu.cn/"
+    },
+    {
+      "name": "外国语学院",
+      "url": "https://wgyxy.wzu.edu.cn/"
+    },
+    {
+      "name": "数理学院",
+      "url": "https://slxy.wzu.edu.cn/"
+    },
+    {
+      "name": "化学与材料工程学院",
+      "url": "https://chem.wzu.edu.cn/"
+    },
+    {
+      "name": "生命与环境科学学院",
+      "url": "https://shxy.wzu.edu.cn/"
+    },
+    {
+      "name": "机电工程学院",
+      "url": "https://jdxy.wzu.edu.cn/"
+    },
+    {
+      "name": "电气与电子工程学院",
+      "url": "https://eee.wzu.edu.cn/"
+    },
+    {
+      "name": "计算机与人工智能学院",
+      "url": "https://ai.wzu.edu.cn/"
+    },
+    {
+      "name": "建筑工程学院",
+      "url": "https://cace.wzu.edu.cn/"
+    },
+    {
+      "name": "音乐学院",
+      "url": "https://yyxy.wzu.edu.cn/"
+    },
+    {
+      "name": "美术与设计学院",
+      "url": "https://art.wzu.edu.cn/"
+    },
+    {
+      "name": "国际教育学院（留学生教育与管理部）",
+      "url": "https://cie.wzu.edu.cn/"
+    },
+    {
+      "name": "创新创业学院",
+      "url": "https://cyxy.wzu.edu.cn"
+    },
+    {
+      "name": "华侨学院",
+      "url": "https://hqxy.wzu.edu.cn/"
+    },
+    {
+      "name": "瑞安研究生院",
+      "url": "https://ruian.wzu.edu.cn/"
+    },
+    {
+      "name": "苏步青学院",
+      "url": "https://sbq.wzu.edu.cn/"
+    },
+    {
+      "name": "继续教育学院（技术与管理人才培训中心）",
+      "url": "https://wdcj.wzu.edu.cn/"
+    }
+  ],
+  "部门": [
+    {
+      "name": "党委（校长）办公室",
+      "url": null,
+      "note": "无独立站点"
+    },
+    {
+      "name": "组织部（机关党委、党校）",
+      "url": "https://zzb.wzu.edu.cn/"
+    },
+    {
+      "name": "宣传部（教师工作部）",
+      "url": null,
+      "note": "无独立站点"
+    },
+    {
+      "name": "纪检监察室",
+      "url": null,
+      "note": "无独立站点"
+    },
+    {
+      "name": "统战部（妇联）",
+      "url": "https://tzb.wzu.edu.cn/"
+    },
+    {
+      "name": "发展规划处",
+      "url": "https://fzghc.wzu.edu.cn/"
+    },
+    {
+      "name": "人事处（人才办公室）",
+      "url": "https://rsc.wzu.edu.cn/"
+    },
+    {
+      "name": "学生工作部（学生处、人民武装部）",
+      "url": "https://xsc.wzu.edu.cn/"
+    },
+    {
+      "name": "招生与就业处",
+      "url": "https://zs.wzu.edu.cn/jry.htm"
+    },
+    {
+      "name": "研究生院（研究生工作部）",
+      "url": "https://yjsb.wzu.edu.cn/"
+    },
+    {
+      "name": "教务处",
+      "url": "https://jwc.wzu.edu.cn/"
+    },
+    {
+      "name": "科学技术处",
+      "url": "https://kjc.wzu.edu.cn/"
+    },
+    {
+      "name": "人文社会科学处",
+      "url": "https://skc.wzu.edu.cn/"
+    },
+    {
+      "name": "地方合作处（继续教育处）",
+      "url": "https://xdhz.wzu.edu.cn/"
+    },
+    {
+      "name": "计划财务处",
+      "url": "https://jcc.wzu.edu.cn/"
+    },
+    {
+      "name": "审计处",
+      "url": "https://sjc.wzu.edu.cn/"
+    },
+    {
+      "name": "国资与实验室管理处",
+      "url": "https://gyzc.wzu.edu.cn/"
+    },
+    {
+      "name": "公共事务管理处",
+      "url": "https://xyjs.wzu.edu.cn/"
+    },
+    {
+      "name": "国际交流与合作处（港澳台侨办公室）",
+      "url": "https://iro.wzu.edu.cn"
+    },
+    {
+      "name": "离退休工作处",
+      "url": "https://lgb.wzu.edu.cn/"
+    },
+    {
+      "name": "安全保卫部",
+      "url": "https://bw.wzu.edu.cn/"
+    },
+    {
+      "name": "工会",
+      "url": "https://wdgh.wzu.edu.cn/"
+    },
+    {
+      "name": "团委",
+      "url": "https://tw.wzu.edu.cn/"
+    },
+    {
+      "name": "学科建设与学术交流中心",
+      "url": "https://xkzx.wzu.edu.cn/"
+    },
+    {
+      "name": "教师教学发展中心（教育督导与教学评估中心）",
+      "url": "https://jxzx.wzu.edu.cn/"
+    },
+    {
+      "name": "校友与发展联络办公室",
+      "url": "https://xyw.wzu.edu.cn/"
+    },
+    {
+      "name": "招标与采购中心",
+      "url": "https://zczx.wzu.edu.cn/"
+    },
+    {
+      "name": "图书馆",
+      "url": "https://lib.wzu.edu.cn/"
+    },
+    {
+      "name": "档案馆",
+      "url": "https://daxt.wzu.edu.cn/touch/"
+    },
+    {
+      "name": "信息技术中心",
+      "url": "https://itc.wzu.edu.cn/"
+    },
+    {
+      "name": "期刊社",
+      "url": "https://qks.wzu.edu.cn/"
+    },
+    {
+      "name": "资产公司",
+      "url": "https://zcjy.wzu.edu.cn/"
+    }
+  ],
+  "其他": [
+    {
+      "name": "浙江省皮革工程重点实验室",
+      "url": "https://leather.wzu.edu.cn/index.htm"
+    },
+    {
+      "name": "发绣研究院",
+      "url": "https://faxiu.wzu.edu.cn"
+    },
+    {
+      "name": "省碳材料技术研究重点实验室",
+      "url": "https://advmat.wzu.edu.cn/"
+    },
+    {
+      "name": "心理健康教育中心",
+      "url": "https://psy.wzu.edu.cn/"
+    },
+    {
+      "name": "温州人经济研究中心",
+      "url": "https://wzr.wzu.edu.cn/"
+    },
+    {
+      "name": "新材料与产业技术研究院",
+      "url": "https://inmit.wzu.edu.cn/"
+    },
+    {
+      "name": "激光与光电智能制造研究院",
+      "url": "https://im.wzu.edu.cn"
+    },
+    {
+      "name": "浙江传统戏曲研究与传承中心",
+      "url": "https://zjctxq.wzu.edu.cn/"
+    },
+    {
+      "name": "意大利分校",
+      "url": "https://italy.wzu.edu.cn/"
+    },
+    {
+      "name": "海外教育服务中心",
+      "url": "https://oesc.wzu.edu.cn/"
+    },
+    {
+      "name": "实验动物中心",
+      "url": "https://sydwzx.wzu.edu.cn/"
+    },
+    {
+      "name": "温州女子学院",
+      "url": "https://wzwoman.wzu.edu.cn/"
+    },
+    {
+      "name": "温州民俗博物馆",
+      "url": "https://wmbwg.wzu.edu.cn/"
+    }
+  ]
+}
