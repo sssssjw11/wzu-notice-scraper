@@ -10,8 +10,8 @@ import {
   Database,
   FileJson,
   Filter,
+  Globe2,
   Inbox,
-  Layers3,
   LoaderCircle,
   MessageCircle,
   PanelRight,
@@ -28,6 +28,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import OfficialMonitor from './OfficialMonitor';
 
 const CATEGORY_LABELS = {
   course: '课程安排',
@@ -326,6 +327,7 @@ function RangeEmptyState({ dateRangeLabel, archiveCount, onReset, onOpenSettings
 }
 
 function App() {
+  const [screen, setScreen] = useState(() => window.localStorage.getItem('attention-screen') === 'official' ? 'official' : 'chat');
   const [result, setResult] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [filter, setFilter] = useState('all');
@@ -358,6 +360,10 @@ function App() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [completionPending, setCompletionPending] = useState(() => new Set());
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    window.localStorage.setItem('attention-screen', screen);
+  }, [screen]);
 
   const loadWechatGroups = async (query = wechatQuery, signal) => {
     setWechatLoading(true);
@@ -562,12 +568,8 @@ function App() {
   const providerLabel = provider === 'local' ? '本地 Jev 基线' : provider === 'jev' ? 'TypeSafe Jev' : '自定义 Jev API';
   const sourceLabel = result && result.source && result.source.source_kind === 'wechat-local' ? '本机微信只读导入' : 'messages.json 导入';
   const deadlineStatusCounts = (result && result.summary && result.summary.deadline_status_counts) || {};
-  const sourceFiles = (result && result.source && result.source.files) || [];
   const categoryCounts = (result && result.summary && result.summary.category_counts) || {};
   const categoryOptions = Object.keys(CATEGORY_LABELS).filter((value) => categoryCounts[value]);
-  const resolvedFileCount = result && result.source_export && result.source_export.resolved_file_count != null
-    ? result.source_export.resolved_file_count
-    : sourceFiles.filter((item) => item.local_available).length;
   const activeTotal = result && result.summary && Number.isFinite(Number(result.summary.active_count))
     ? Number(result.summary.active_count)
     : activeItems.length;
@@ -591,7 +593,7 @@ function App() {
     ? `已归档 ${formatNumber(deadlineScopedItems.length)} / ${formatNumber(archivedTotal)} 条`
     : `进行中 ${formatNumber(activeTotal)} 条`;
   const headline = result
-    ? <>进行中 <em>{formatNumber(activeTotal)}</em> 件，已归档 <em>{formatNumber(archivedTotal)}</em> 件</>
+    ? <>进行中 <em>{formatNumber(activeTotal)}</em> 件</>
     : <>正在建立截止矩阵</>;
 
   const selectQueueView = (view) => {
@@ -647,17 +649,17 @@ function App() {
           <span>AD</span>
         </div>
         <nav className="side-nav" aria-label="主导航">
-          <button className="nav-icon active" title="注意力队列"><Inbox size={19} /></button>
-          <button className="nav-icon" title="群聊数据"><MessageCircle size={19} /></button>
-          <button className="nav-icon" title="分类视图"><Layers3 size={19} /></button>
+          <button className={'nav-icon ' + (screen === 'chat' ? 'active' : '')} title="微信群通知" aria-label="微信群通知" onClick={() => setScreen('chat')}><Inbox size={19} /></button>
+          <button className={'nav-icon ' + (screen === 'official' ? 'active' : '')} title="学院官网监测" aria-label="学院官网监测" onClick={() => { setSettingsOpen(false); setScreen('official'); }}><Globe2 size={19} /></button>
         </nav>
         <div className="side-bottom">
-          <button className="nav-icon" title="帮助"><CircleHelp size={19} /></button>
-          <button className={'nav-icon ' + (settingsOpen ? 'active' : '')} title="API 设置" onClick={() => setSettingsOpen(true)}><Settings2 size={19} /></button>
+          <a className="nav-icon" title="项目说明" href="https://github.com/sssssjw11/wzu-notice-scraper#readme" target="_blank" rel="noopener noreferrer"><CircleHelp size={19} /></a>
+          {screen === 'chat' && <button className={'nav-icon ' + (settingsOpen ? 'active' : '')} title="API 设置" onClick={() => setSettingsOpen(true)}><Settings2 size={19} /></button>}
         </div>
       </aside>
 
       <main className="main-canvas">
+        {screen === 'official' ? <OfficialMonitor /> : <>
         <header className="topbar">
           <div className="group-context">
             <div className="context-icon"><MessageCircle size={17} /></div>
@@ -694,19 +696,8 @@ function App() {
             <p className="eyebrow">ATTENTION QUEUE</p>
             <h1>{headline}</h1>
             <p className="heading-subtitle">
-              {result ? formatNumber(result.summary.candidate_count) + ' 个候选事项，已按 Jev typed judgments 与本地 reducer 排序 · ' + sourceLabel + ' · 消息范围 ' + dateRangeLabel : '正在读取消息归档…'}
+              {result ? formatNumber(result.summary.candidate_count) + ' 个候选事项 · ' + sourceLabel + ' · ' + dateRangeLabel : '正在读取消息归档…'}
             </p>
-          </div>
-          <div className="heading-tools">
-            <div className="system-readout" aria-label="运行状态">
-              <span><i className="readout-dot" /> PIPELINE ONLINE</span>
-              <span>JEV // {provider === 'local' ? 'LOCAL' : 'REMOTE'}</span>
-              <span>{result ? formatNumber(result.summary.candidate_count) : '--'} ITEMS</span>
-            </div>
-            <div className="heading-actions">
-              <button className="icon-button" title="刷新当前分拣" onClick={runAnalysis} disabled={running}><RefreshCw size={17} className={running ? 'spin' : ''} /></button>
-              <button className="icon-button" title="筛选设置" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={17} /></button>
-            </div>
           </div>
         </section>
 
@@ -756,14 +747,9 @@ function App() {
           <>
             <section className="metric-strip">
               <div className="metric-item">
-                <span className="metric-label">{hasDateFilter ? '纳入消息' : '原始消息'}</span>
-                <strong>{formatNumber(result.source.message_count)}</strong>
-                <span className="metric-note">条</span>
-              </div>
-              <div className="metric-item">
-                <span className="metric-label">进行中</span>
-                <strong>{formatNumber(activeTotal)}</strong>
-                <span className="metric-note">P0 / P1 {formatNumber(activeUrgentCount)} 条</span>
+                <span className="metric-label">优先处理 · P0 / P1</span>
+                <strong>{formatNumber(activeUrgentCount)}</strong>
+                <span className="metric-note">件</span>
               </div>
               <div className="metric-item deadline-metric">
                 <span className="metric-label">今日 / 临近</span>
@@ -775,23 +761,6 @@ function App() {
                 <strong>{formatNumber(archivedTotal)}</strong>
                 <span className="metric-note">完成 {formatNumber(completedTotal)} / 超期 {formatNumber(overdueTotal)}</span>
               </button>
-              <div className="metric-item accent">
-                <span className="metric-label">需要复核</span>
-                <strong>{formatNumber(result.summary.needs_review_count)}</strong>
-                <span className="metric-note">条</span>
-              </div>
-              <div className="metric-item">
-                <span className="metric-label">分析引擎</span>
-                <strong className="metric-engine">{(result.provider && result.provider.label) || providerLabel}</strong>
-                <span className="metric-note">{result.provider && result.provider.calls ? result.provider.calls + ' 次 typed call' : '本地计算'}</span>
-              </div>
-              {result.source && result.source.source_kind === 'wechat-local' && (
-                <div className="metric-item">
-                  <span className="metric-label">聊天文件</span>
-                  <strong>{formatNumber(result.source.file_count)}</strong>
-                  <span className="metric-note">{resolvedFileCount ? formatNumber(resolvedFileCount) + ' 个已在本机' : '仅元数据'}</span>
-                </div>
-              )}
             </section>
 
             {hasMessages ? <div className="workspace-grid">
@@ -982,6 +951,7 @@ function App() {
             )}
           </>
         )}
+        </>}
       </main>
 
       {settingsOpen && (

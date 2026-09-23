@@ -243,12 +243,10 @@ button:disabled { cursor: wait; opacity: .55; }
 .button-quiet { background: #fff; color: var(--ink); }
 
 .page-heading {
-  min-height: 184px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 132px;
+  display: flex;
   align-items: end;
-  gap: 42px;
-  padding: 34px 38px 30px;
+  padding: 25px 38px 22px;
   border-bottom: 1px solid var(--ink);
   background: var(--paper);
   position: relative;
@@ -273,7 +271,7 @@ button:disabled { cursor: wait; opacity: .55; }
 .page-heading h1 {
   max-width: 900px;
   margin: 0;
-  font-size: 44px;
+  font-size: 38px;
   line-height: 1.05;
   font-weight: 700;
 }
@@ -286,41 +284,6 @@ button:disabled { cursor: wait; opacity: .55; }
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
-}
-
-.heading-tools {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-.heading-actions { display: flex; gap: 6px; }
-
-.system-readout {
-  min-width: 182px;
-  display: grid;
-  border: 1px solid var(--ink);
-  background: #fff;
-  font: 9px/1.25 var(--mono);
-}
-
-.system-readout span {
-  min-height: 25px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 9px;
-  border-bottom: 1px solid var(--ink);
-  white-space: nowrap;
-}
-
-.system-readout span:last-child { border-bottom: 0; }
-
-.readout-dot {
-  width: 7px;
-  height: 7px;
-  display: inline-block;
-  background: var(--green);
 }
 
 .error-banner,
@@ -422,7 +385,7 @@ button:disabled { cursor: wait; opacity: .55; }
 
 .metric-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 38px 22px;
   border: 2px solid var(--ink);
   background: #fff;
@@ -430,7 +393,7 @@ button:disabled { cursor: wait; opacity: .55; }
 
 .metric-item {
   min-width: 0;
-  min-height: 96px;
+  min-height: 82px;
   padding: 14px 15px;
   border: 0;
   border-right: 1px solid var(--ink);

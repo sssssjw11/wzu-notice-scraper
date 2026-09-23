@@ -19,9 +19,11 @@ from starlette.concurrency import run_in_threadpool
 
 try:
     from .completion_store import apply_completions, load_completions, set_completion
+    from .official_monitor import OfficialMonitor
     from .wechat_bridge import WeChatBridge
 except ImportError:  # pragma: no cover - direct module execution fallback
     from completion_store import apply_completions, load_completions, set_completion
+    from official_monitor import OfficialMonitor
     from wechat_bridge import WeChatBridge
 
 
@@ -47,6 +49,7 @@ def load_skill_module():
 
 TRIAGE = load_skill_module()
 WECHAT = WeChatBridge()
+OFFICIAL = OfficialMonitor()
 app = FastAPI(title="Attention Desk API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -715,6 +718,49 @@ def complete_item(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         return set_completion(payload.get("item_key", ""), payload.get("completed"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/official/overview")
+def official_overview() -> dict[str, Any]:
+    return OFFICIAL.overview()
+
+
+@app.post("/api/official/scan")
+def official_scan(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    source_ids = payload.get("source_ids")
+    if source_ids is not None and (not isinstance(source_ids, list) or not all(isinstance(value, str) for value in source_ids)):
+        raise HTTPException(status_code=400, detail="source_ids 必须是学院 ID 数组")
+    try:
+        return OFFICIAL.start_scan(source_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/official/read")
+def official_set_read(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    try:
+        count = OFFICIAL.set_read(
+            str(payload["source_id"]) if payload.get("source_id") else None,
+            str(payload["url"]) if payload.get("url") else None,
+            payload.get("read"),
+        )
+        return {"updated_count": count}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/official/settings")
+def official_settings(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    hours = payload.get("auto_interval_hours")
+    if type(hours) is not int:
+        raise HTTPException(status_code=400, detail="auto_interval_hours 必须是整数")
+    try:
+        OFFICIAL.set_interval(hours)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"auto_interval_hours": hours}
 
 
 @app.get("/api/wechat/status")

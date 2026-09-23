@@ -10,7 +10,9 @@
 
 仓库现已包含 `attention-desk/` 本地 Web 工作台，可把微信群 `messages.json` 整理成
 按截止状态和优先级排序的行动队列，支持 Jev 结构化判断、指定日期范围、完成归档和撤销。
-原有学院官网抓取脚本保持独立，仍可按下文命令单独运行。
+“学院官网监测”是第二个消息来源：复用本仓库的站点目录、请求节流和 HTML 解析器，
+检查 22 个学院的公开通知入口，在工作台里查看新增公告与来源异常。它只保存标题、日期、
+栏目和链接，不下载正文或附件；原有完整离线抓取流程仍可按下文命令单独运行。
 
 ```powershell
 cd attention-desk
@@ -20,6 +22,9 @@ cd attention-desk
 首次打开使用 `data/demo_messages.json` 合成演示记录。真实微信聊天、下载附件、
 API 密钥和运行时状态均不进入公开仓库。工作台用法见
 [attention-desk/README.md](attention-desk/README.md)。
+
+本仓库保留了 [@x2y1eesss 的原始抓取器](https://github.com/x2y1eesss/wzu-notice-scraper)
+及其 Git 历史。模块分工和可核对的贡献记录见 [CREDITS.md](CREDITS.md)。
 
 ---
 
