@@ -229,5 +229,7 @@ python build_reach_list.py   # 整理成 Markdown + CSV 清单
 
 ## 版权
 
+本仓库内的代码以 [MIT License](LICENSE) 开源。
+
 所有抓取内容版权归温州大学各二级单位所有，本工具仅作离线归档与检索之用。
 使用时请遵守目标站点的 robots 约定与相关法律法规，控制请求频率。
