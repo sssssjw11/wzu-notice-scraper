@@ -21,7 +21,6 @@ import {
   Mail,
   MessageCircle,
   PanelRight,
-  Radar,
   RefreshCw,
   RotateCcw,
   Search,
@@ -873,7 +872,7 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-lockup" title="Attention Desk">
-          <div className="brand-mark"><Radar size={22} strokeWidth={1.7} /></div>
+          <div className="brand-mark"><img src="/touxian-icon.png" alt="" /></div>
           <span>AD</span>
         </div>
         <nav className="side-nav" aria-label="主导航">

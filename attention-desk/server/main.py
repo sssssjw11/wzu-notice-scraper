@@ -22,14 +22,14 @@ try:
     from . import mail_digest, profile_store as PROFILE
     from .chat_archive import ChatArchiveError, parse_archive, safe_filename
     from .completion_store import apply_completions, load_completions, set_completion
-    from .official_monitor import OfficialMonitor
+    from .official_monitor import AuthRequired, OfficialMonitor
     from .wechat_bridge import WeChatBridge
 except ImportError:  # pragma: no cover - direct module execution fallback
     import mail_digest
     import profile_store as PROFILE
     from chat_archive import ChatArchiveError, parse_archive, safe_filename
     from completion_store import apply_completions, load_completions, set_completion
-    from official_monitor import OfficialMonitor
+    from official_monitor import AuthRequired, OfficialMonitor
     from wechat_bridge import WeChatBridge
 
 
@@ -1203,6 +1203,30 @@ def official_set_read(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
             payload.get("read"),
         )
         return {"updated_count": count}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/official/notice")
+def official_notice_detail(source_id: str = "", url: str = "") -> dict[str, Any]:
+    try:
+        return OFFICIAL.notice_detail(source_id, url)
+    except AuthRequired as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/official/action")
+def official_action(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    try:
+        return OFFICIAL.set_action(
+            str(payload["source_id"]) if payload.get("source_id") else "",
+            str(payload["url"]) if payload.get("url") else "",
+            payload.get("completed"),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
