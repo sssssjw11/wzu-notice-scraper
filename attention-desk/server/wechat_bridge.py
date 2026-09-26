@@ -269,10 +269,16 @@ class WeChatBridge:
                 ["tasklist", "/FI", f"IMAGENAME eq {self.process_name}", "/NH"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=3,
                 check=False,
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, ValueError, subprocess.SubprocessError):
+            # ValueError 兜住解码异常（tasklist 在中文系统输出 GBK，被当
+            # UTF-8 解码会抛 UnicodeDecodeError——ValueError 的子类）。
+            return False
+        if not result.stdout:
             return False
         return self.process_name.lower() in result.stdout.lower()
 

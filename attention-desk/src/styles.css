@@ -913,7 +913,7 @@ button:disabled { cursor: wait; opacity: .55; }
 .field-label span { color: var(--muted); font-size: 9px; font-weight: 400; }
 .privacy-note { margin: 12px 0 0; color: var(--muted); font-size: 9px; line-height: 1.55; }
 
-.source-switcher { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 9px; }
+.source-switcher { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 9px; }
 .source-option {
   min-height: 65px;
   display: grid;
@@ -964,6 +964,12 @@ button:disabled { cursor: wait; opacity: .55; }
 .wechat-group-copy small { margin-top: 3px; color: var(--muted); font-size: 8px; }
 .wechat-list-note { min-height: 64px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--muted); font-size: 9px; }
 .selected-group-note { display: flex; align-items: flex-start; gap: 6px; margin-top: 9px; padding: 8px; border: 1px solid var(--green); background: var(--green-soft); color: #0e5837; font-size: 9px; line-height: 1.45; }
+
+/* 聊天记录压缩包链路（新增数据源） */
+.archive-source-panel { display: grid; gap: 0; }
+.archive-clear { justify-self: start; margin-top: 8px; }
+.source-option small { white-space: nowrap; }
+.source-option span { white-space: nowrap; }
 .check-line { display: flex; align-items: center; gap: 7px; margin-top: 9px; color: var(--muted); font-size: 9px; }
 .check-line input { accent-color: var(--ink); }
 
@@ -1045,4 +1051,298 @@ button:disabled { cursor: wait; opacity: .55; }
   .search-box { width: 144px; }
   .queue-category-select { max-width: 92px; }
   .queue-meta span:nth-child(2) { display: none; }
+}
+
+/* ------------------------------------------------------------------ 邮件摘要 */
+
+.mail-trigger { white-space: nowrap; }
+.mail-trigger:disabled { opacity: .45; cursor: not-allowed; }
+
+.mail-drawer { width: min(560px, 94vw); }
+
+.mail-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  background: var(--soft);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.mail-status-line strong { font-family: var(--mono); }
+
+.mail-recipients {
+  height: auto;
+  min-height: 54px;
+  padding: 9px;
+  resize: vertical;
+  font-family: var(--mono);
+  line-height: 1.55;
+}
+
+.mail-actions { margin: 0 0 4px; }
+
+.mail-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.mail-notice.ok { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+.mail-notice.warn { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+
+.mail-subject {
+  margin-bottom: 14px;
+  padding: 9px 11px;
+  border: 1px solid var(--ink);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mail-body-label { margin-top: 4px; }
+
+.mail-body-preview {
+  max-height: 300px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mail-confirm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 4px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--ink);
+  background: var(--yellow-soft);
+}
+
+.mail-confirm-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mail-hint { margin-top: 14px; }
+
+.mail-format-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mail-format-switch button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.mail-format-switch button:hover { background: var(--soft); }
+
+.mail-format-switch button.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.mail-format-switch button span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mail-format-switch button small {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.mail-format-switch button.active small { color: rgba(255, 255, 255, .65); }
+
+.mail-format-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--line-soft);
+  background: var(--soft);
+  color: var(--muted) !important;
+  font-size: 9px !important;
+  font-weight: 400 !important;
+  border-radius: 10px;
+}
+
+.mail-body-frame {
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--ink);
+  background: #e8e7e0;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------- 用户画像 */
+
+.profile-nav { position: relative; }
+.profile-nav .nav-badge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.profile-notes {
+  resize: vertical;
+  min-height: 84px;
+  font-family: inherit;
+  line-height: 1.6;
+}
+
+.toggle-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.toggle-line > span { display: flex; flex-direction: column; gap: 3px; }
+.toggle-line strong { font-size: 13px; }
+.toggle-line small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+.interest-editor { display: flex; flex-direction: column; gap: 8px; }
+.interest-tags { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; align-items: center; }
+.interest-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px 3px 9px;
+  border: 1px solid var(--line-soft);
+  background: var(--soft);
+  border-radius: 11px;
+  font-size: 11px;
+}
+.interest-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: var(--subtle);
+  line-height: 0;
+}
+.interest-remove:hover { color: var(--red); }
+.interest-add { display: flex; gap: 8px; }
+.interest-add .text-input { flex: 1; }
+
+.drawer-notice { margin-right: auto; font-size: 11px; color: var(--green); }
+
+/* 决策轨迹里的画像影响块 */
+.profile-trace {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--blue);
+  background: var(--blue-soft);
+  border-radius: 4px;
+}
+.profile-trace .section-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+  color: var(--blue);
+}
+.profile-trace-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.profile-trace-label { color: var(--muted); min-width: 62px; }
+.profile-trace-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.profile-trace-value small { color: var(--subtle); font-weight: 400; }
+.profile-trace-value em { font-style: normal; color: var(--subtle); text-decoration: line-through; }
+.profile-trace-meta.w-boost { color: var(--green); font-weight: 700; }
+.profile-trace-meta.w-damp { color: var(--red); }
+.profile-hit-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.profile-hit-tag {
+  padding: 2px 7px;
+  border: 1px solid rgba(35, 89, 215, .3);
+  background: #fff;
+  color: var(--blue);
+  border-radius: 9px;
+  font-size: 10px;
+}
+.profile-hit-tag.neg {
+  border-color: rgba(227, 35, 45, .3);
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+/* 队列行上的画像标记 */
+.profile-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border: 1px solid rgba(35, 89, 215, .35);
+  background: var(--blue-soft);
+  color: var(--blue);
+  border-radius: 9px;
+  font-size: 9px;
+}
+.profile-mark.rescued {
+  border-color: rgba(24, 116, 76, .35);
+  background: var(--green-soft);
+  color: var(--green);
+}
+.profile-mark.promoted {
+  border-color: rgba(227, 35, 45, .4);
+  background: var(--red-soft);
+  color: var(--red);
+  font-weight: 700;
+}
+.profile-mark.sunk {
+  border-color: rgba(138, 137, 130, .4);
+  background: rgba(138, 137, 130, .12);
+  color: var(--subtle);
+  font-weight: 700;
 }

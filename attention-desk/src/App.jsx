@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Archive,
+  ArrowRight,
   ArrowUpRight,
+  Brain,
   CalendarRange,
   Check,
   ChevronDown,
@@ -9,10 +12,13 @@ import {
   Clock3,
   Database,
   FileJson,
+  FileText,
   Filter,
   Globe2,
   Inbox,
+  LayoutPanelTop,
   LoaderCircle,
+  Mail,
   MessageCircle,
   PanelRight,
   Radar,
@@ -24,6 +30,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   ShieldCheck,
+  UserRound,
   Users,
   Upload,
   X,
@@ -344,6 +351,7 @@ function App() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [file, setFile] = useState(null);
+  const [archiveFile, setArchiveFile] = useState(null);
   const [sourceMode, setSourceMode] = useState('file');
   const [wechatStatus, setWechatStatus] = useState(null);
   const [wechatGroups, setWechatGroups] = useState([]);
@@ -359,11 +367,91 @@ function App() {
   const [reviewOnly, setReviewOnly] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [completionPending, setCompletionPending] = useState(() => new Set());
+  // 邮件摘要：地址持久化到 localStorage，确认令牌只在内存里存一份
+  const [mailStatus, setMailStatus] = useState(null);
+  const [mailOpen, setMailOpen] = useState(false);
+  const [mailRecipients, setMailRecipients] = useState(() => window.localStorage.getItem('attention-mail-recipients') || '');
+  const [mailFormat, setMailFormat] = useState(() => window.localStorage.getItem('attention-mail-format') || 'html');
+  const [mailPreview, setMailPreview] = useState(null);
+  const [mailBusy, setMailBusy] = useState(false);
+  const [mailNotice, setMailNotice] = useState('');
+  const [mailSent, setMailSent] = useState(null);
+  // 用户画像：默认关闭。开启后进入判断链路的 relevance 加权，只落本机文件。
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profile, setProfile] = useState(() => ({
+    enabled: false,
+    college: '',
+    major: '',
+    grade: '',
+    notes: '',
+    interests: [],
+  }));
+  const [profileMeta, setProfileMeta] = useState({ colleges: [], grade_range: [2019, 2030], limits: {} });
+  const [profileActive, setProfileActive] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileNotice, setProfileNotice] = useState('');
+  const [interestDraft, setInterestDraft] = useState('');
   const fileRef = useRef(null);
+  const archiveRef = useRef(null);
 
   useEffect(() => {
     window.localStorage.setItem('attention-screen', screen);
   }, [screen]);
+
+  const loadProfile = async () => {
+    try {
+      const response = await fetch('/api/profile');
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || '无法读取画像');
+      setProfile(payload.profile || {});
+      setProfileMeta({
+        colleges: payload.colleges || [],
+        grade_range: payload.grade_range || [2019, 2030],
+        limits: payload.limits || {},
+      });
+      setProfileActive(Boolean(payload.active));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const saveProfile = async (next = profile) => {
+    setProfileBusy(true);
+    setProfileNotice('');
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || '保存失败');
+      setProfile(payload.profile || {});
+      setProfileActive(Boolean(payload.active));
+      setProfileNotice(payload.active ? '已保存，下次分拣时生效' : '已保存（未启用）');
+    } catch (err) {
+      setProfileNotice(err.message);
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const patchProfile = (patch) => setProfile((current) => ({ ...current, ...patch }));
+
+  const addInterest = () => {
+    const text = interestDraft.trim();
+    if (!text) return;
+    setProfile((current) => {
+      const interests = current.interests || [];
+      if (interests.includes(text)) return current;
+      return { ...current, interests: [...interests, text] };
+    });
+    setInterestDraft('');
+  };
+
+  const removeInterest = (value) => {
+    setProfile((current) => ({ ...current, interests: (current.interests || []).filter((item) => item !== value) }));
+  };
 
   const loadWechatGroups = async (query = wechatQuery, signal) => {
     setWechatLoading(true);
@@ -412,6 +500,27 @@ function App() {
   }, []);
 
   useEffect(() => {
+    window.localStorage.setItem('attention-mail-recipients', mailRecipients);
+  }, [mailRecipients]);
+
+  useEffect(() => {
+    window.localStorage.setItem('attention-mail-format', mailFormat);
+  }, [mailFormat]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/mail/status')
+      .then((response) => response.json())
+      .then((payload) => { if (alive) setMailStatus(payload); })
+      .catch(() => { if (alive) setMailStatus({ ready: false, reason: '无法连接后端服务' }); });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  useEffect(() => {
     if (!settingsOpen || sourceMode !== 'wechat') return undefined;
     const controller = new AbortController();
     const timer = window.setTimeout(() => loadWechatGroups(wechatQuery, controller.signal), 220);
@@ -456,6 +565,23 @@ function App() {
           resolve_files: resolveWechatFiles,
         }),
       });
+    } else if (sourceMode === 'archive') {
+      if (!archiveFile) {
+        setError('请先选择微信导出的聊天记录压缩包');
+        setRunning(false);
+        return;
+      }
+      const form = new FormData();
+      form.append('file', archiveFile);
+      form.append('provider', provider);
+      form.append('api_key', apiKey);
+      form.append('endpoint', endpoint);
+      form.append('model', model);
+      form.append('as_of', effectiveAsOf);
+      form.append('from_date', effectiveFromDate);
+      form.append('to_date', effectiveToDate);
+      form.append('max_candidates', maxCandidates);
+      request = fetch('/api/analyze-archive', { method: 'POST', body: form });
     } else {
       const form = new FormData();
       if (file) {
@@ -558,6 +684,92 @@ function App() {
     setFile(nextFile);
     setSourceMode('file');
     if (nextFile) setSettingsOpen(true);
+    event.target.value = '';
+  };
+
+  const onArchiveChange = (event) => {
+    const nextFile = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+    setArchiveFile(nextFile);
+    if (nextFile) setSourceMode('archive');
+    event.target.value = '';
+  };
+
+  // ---------------------------------------------------------------- 邮件摘要
+
+  const openMail = () => {
+    setMailOpen(true);
+    setMailNotice('');
+    setMailSent(null);
+    if (!mailPreview) prepareMail();
+  };
+
+  const prepareMail = async (format = mailFormat) => {
+    if (!result) {
+      setMailNotice('请先完成一次分拣，再生成邮件摘要。');
+      return;
+    }
+    setMailBusy(true);
+    setMailNotice('');
+    setMailSent(null);
+    try {
+      const response = await fetch('/api/mail/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          result,
+          recipients: mailRecipients,
+          as_of: (result.source && result.source.as_of) || asOf,
+          body_format: format,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || '生成邮件摘要失败');
+      setMailPreview(payload);
+      if (Array.isArray(payload.recipients) && payload.recipients.length) {
+        setMailRecipients(payload.recipients.join(', '));
+      }
+    } catch (err) {
+      setMailPreview(null);
+      setMailNotice(err.message);
+    } finally {
+      setMailBusy(false);
+    }
+  };
+
+  // 切换格式后旧预览作废（令牌与内容绑定），需要重新生成
+  const changeMailFormat = (next) => {
+    setMailFormat(next);
+    setMailPreview(null);
+    setMailNotice('');
+    setMailSent(null);
+  };
+
+  const confirmMailSend = async () => {
+    if (!mailPreview) return;
+    setMailBusy(true);
+    setMailNotice('');
+    try {
+      const response = await fetch('/api/mail/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirmation_token: mailPreview.confirmation_token,
+          recipients: mailPreview.recipients,
+          subject: mailPreview.subject,
+          body: mailPreview.body,
+          body_format: mailPreview.body_format || mailFormat,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || '发送失败');
+      setMailSent(payload);
+      setMailPreview(null);
+      setMailNotice('邮件已发出。');
+    } catch (err) {
+      setMailNotice(err.message);
+    } finally {
+      setMailBusy(false);
+    }
   };
 
   const archiveStale = result && result.summary && result.summary.archive_stale;
@@ -565,8 +777,24 @@ function App() {
   const hasDateFilter = Boolean(messageDateFilter.from || messageDateFilter.to);
   const dateRangeLabel = formatRangeLabel(messageDateFilter.from, messageDateFilter.to);
   const draftDateRangeLabel = formatRangeLabel(fromDate, toDate);
-  const providerLabel = provider === 'local' ? '本地 Jev 基线' : provider === 'jev' ? 'TypeSafe Jev' : '自定义 Jev API';
-  const sourceLabel = result && result.source && result.source.source_kind === 'wechat-local' ? '本机微信只读导入' : 'messages.json 导入';
+  const providerLabel = provider === 'local' ? '本地 Jev 基线' : provider === 'jev' ? 'TypeSafe Jev' : provider === 'deepseek' ? 'DeepSeek' : '自定义 Jev API';
+
+  // 切换提供方时把 endpoint / model 预置成该家的默认值
+  const selectProvider = (next) => {
+    setProvider(next);
+    if (next === 'deepseek') {
+      if (!endpoint || endpoint.includes('typesafe')) setEndpoint('https://api.deepseek.com/chat/completions');
+      if (!model || model === 'jev-system-one') setModel('deepseek-flash');
+    } else if (next === 'jev') {
+      if (!endpoint || endpoint.includes('deepseek')) setEndpoint('https://api.typesafe.ai/v1/systemone');
+      if (!model || model === 'deepseek-flash') setModel('jev-system-one');
+    }
+  };
+  const sourceLabel = result && result.source && result.source.source_kind === 'wechat-local'
+    ? '本机微信只读导入'
+    : result && result.source && result.source.source_kind === 'archive-upload'
+      ? '聊天记录压缩包导入'
+      : 'messages.json 导入';
   const deadlineStatusCounts = (result && result.summary && result.summary.deadline_status_counts) || {};
   const categoryCounts = (result && result.summary && result.summary.category_counts) || {};
   const categoryOptions = Object.keys(CATEGORY_LABELS).filter((value) => categoryCounts[value]);
@@ -654,6 +882,12 @@ function App() {
         </nav>
         <div className="side-bottom">
           <a className="nav-icon" title="项目说明" href="https://github.com/sssssjw11/wzu-notice-scraper#readme" target="_blank" rel="noopener noreferrer"><CircleHelp size={19} /></a>
+          {screen === 'chat' && (
+            <button className={'nav-icon profile-nav ' + (profileOpen ? 'active' : '')} title="我的画像" onClick={() => setProfileOpen(true)}>
+              <UserRound size={19} />
+              {profileActive && <span className="nav-badge" />}
+            </button>
+          )}
           {screen === 'chat' && <button className={'nav-icon ' + (settingsOpen ? 'active' : '')} title="API 设置" onClick={() => setSettingsOpen(true)}><Settings2 size={19} /></button>}
         </div>
       </aside>
@@ -680,6 +914,14 @@ function App() {
               {providerLabel}
               <ChevronDown size={14} />
             </button>
+            <button
+              className="button button-quiet mail-trigger"
+              title={mailStatus && mailStatus.ready ? `发送待办摘要到 ${mailStatus.sender}` : '邮件链路未就绪'}
+              onClick={openMail}
+              disabled={!result || (mailStatus && !mailStatus.ready)}
+            >
+              <Mail size={16} /> 邮件摘要
+            </button>
             <button className="button button-quiet" title="上传 messages.json" onClick={() => fileRef.current && fileRef.current.click()}>
               <Upload size={16} /> 上传
             </button>
@@ -688,6 +930,7 @@ function App() {
               {running ? '分拣中' : '开始分拣'}
             </button>
             <input ref={fileRef} className="visually-hidden" type="file" accept=".json,application/json" onChange={onFileChange} />
+            <input ref={archiveRef} className="visually-hidden" type="file" accept=".zip,application/zip" onChange={onArchiveChange} />
           </div>
         </header>
 
@@ -838,6 +1081,24 @@ function App() {
                               <DeadlinePill item={item} archived={queueView === 'archive'} />
                               <span className="category-label">{categoryLabel(item.judgments && item.judgments.category && item.judgments.category.value)}</span>
                               {item.decision && item.decision.needs_review && <span className={'review-mark ' + (queueView === 'archive' ? 'archived' : '')}><AlertTriangle size={12} /> {queueView === 'archive' ? '历史复核' : '复核'}</span>}
+                              {item.judgments && item.judgments.importance && item.judgments.importance.profile && (() => {
+                                const pf = item.judgments.importance.profile;
+                                const promoted = !!(item.decision && item.decision.profile_promoted);
+                                const sunk = !!(item.decision && item.decision.profile_sunk);
+                                const tone = promoted ? ' promoted' : (sunk ? ' sunk' : (pf.floor_applied ? ' rescued' : ''));
+                                const negs = pf.negative_hits || [];
+                                let tip;
+                                if (promoted) tip = `画像判定为强相关，已提升优先级 · ${item.decision.reason || ''}`;
+                                else if (sunk) tip = `画像判定为面向其他群体，已降级观察 · ${item.decision.reason || ''}`;
+                                else if (negs.length) tip = `本地命中反向信号：${negs.join('、')}`;
+                                else if (pf.local_hits && pf.local_hits.length) tip = `本地命中画像关键词：${pf.local_hits.join('、')}`;
+                                else tip = `画像相关度 ${pf.relevance}/100`;
+                                return (
+                                  <span className={'profile-mark' + tone} title={tip}>
+                                    <UserRound size={12} /> {promoted ? '画像 ↑' : (sunk ? '画像 ↓' : '画像')}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <strong>{itemTitle(item)}</strong>
                             <p>{item.preview}</p>
@@ -898,6 +1159,79 @@ function App() {
                       <div><span>紧迫性</span><strong>{(selectedItem.decision && selectedItem.decision.urgency) || 0}</strong><small>/100</small></div>
                       <div><span>风险</span><strong>{(selectedItem.decision && selectedItem.decision.risk) || 0}</strong><small>/100</small></div>
                     </div>
+                    {(() => {
+                      const relevance = selectedItem.judgments && selectedItem.judgments.relevance;
+                      const importanceProfile = selectedItem.judgments && selectedItem.judgments.importance && selectedItem.judgments.importance.profile;
+                      if (!relevance && !importanceProfile) return null;
+                      return (
+                        <div className="profile-trace">
+                          <div className="section-label"><UserRound size={13} /> 画像影响</div>
+                          {relevance && (
+                            <div className="profile-trace-line">
+                              <span className="profile-trace-label">相关度</span>
+                              <span className="profile-trace-value">{Math.round(relevance.value || 0)}<small>/100</small></span>
+                              <span className="profile-trace-meta">
+                                置信度 {formatPercent(relevance.confidence)}
+                                {relevance.source === 'local-estimate'
+                                  ? ' · 本地规则估算'
+                                  : (relevance.reason && relevance.reason.indexOf('本地命中') === 0 ? ' · 本地硬信号兜底' : '')}
+                              </span>
+                            </div>
+                          )}
+                          {importanceProfile && (() => {
+                            const w = Number(importanceProfile.weight || 1);
+                            const dir = w > 1.001 ? 'boost' : (w < 0.999 ? 'damp' : 'flat');
+                            return (
+                              <div className="profile-trace-line">
+                                <span className="profile-trace-label">重要性调整</span>
+                                <span className="profile-trace-value">
+                                  <em>{importanceProfile.base}</em>
+                                  <ArrowRight size={13} />
+                                  <strong>{Math.round((selectedItem.judgments.importance && selectedItem.judgments.importance.value) || 0)}</strong>
+                                </span>
+                                <span className={'profile-trace-meta w-' + dir}>
+                                  权重 ×{w.toFixed(2)}
+                                  {dir === 'boost' ? ' · 相关度高，加分' : (dir === 'damp' ? ' · 相关度低，降分' : '')}
+                                  {importanceProfile.floor_applied ? ' · 命中画像关键词，保底未沉底' : ''}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                          {(importanceProfile && importanceProfile.local_hits && importanceProfile.local_hits.length > 0) && (
+                            <div className="profile-hit-tags">
+                              {importanceProfile.local_hits.map((hit) => <span key={hit} className="profile-hit-tag">{hit}</span>)}
+                            </div>
+                          )}
+                          {(importanceProfile && importanceProfile.negative_hits && importanceProfile.negative_hits.length > 0) && (
+                            <div className="profile-hit-tags">
+                              {importanceProfile.negative_hits.map((hit) => <span key={hit} className="profile-hit-tag neg">{hit}</span>)}
+                            </div>
+                          )}
+                          {selectedItem.decision && selectedItem.decision.profile_promoted && (
+                            <div className="profile-trace-line">
+                              <span className="profile-trace-label">优先级提升</span>
+                              <span className="profile-trace-value">
+                                <em>{selectedItem.decision.profile_priority_before || '原级'}</em>
+                                <ArrowRight size={13} />
+                                <strong>{selectedItem.decision.priority}</strong>
+                              </span>
+                              <span className="profile-trace-meta">画像强相关，已提一级 · 上限不超过 P1</span>
+                            </div>
+                          )}
+                          {selectedItem.decision && selectedItem.decision.profile_sunk && (
+                            <div className="profile-trace-line">
+                              <span className="profile-trace-label">优先级降级</span>
+                              <span className="profile-trace-value">
+                                <em>{selectedItem.decision.profile_priority_before || '原级'}</em>
+                                <ArrowRight size={13} />
+                                <strong>{selectedItem.decision.priority}</strong>
+                              </span>
+                              <span className="profile-trace-meta w-damp">画像判定面向其他群体，降级观察</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div className="trace-section">
                       <div className="section-label">JEV typed judgments</div>
                       <DecisionRow label="是否公告" type="noul" value={selectedItem.judgments && selectedItem.judgments.is_announcement && selectedItem.judgments.is_announcement.value ? '是' : '否'} confidence={selectedItem.judgments && selectedItem.judgments.is_announcement && selectedItem.judgments.is_announcement.confidence} tone="coral" />
@@ -972,6 +1306,11 @@ function App() {
                   <span>导入文件</span>
                   <small>messages.json</small>
                 </button>
+                <button className={sourceMode === 'archive' ? 'source-option selected' : 'source-option'} onClick={() => setSourceMode('archive')}>
+                  <Archive size={18} />
+                  <span>聊天记录包</span>
+                  <small>微信导出 zip</small>
+                </button>
                 <button className={sourceMode === 'wechat' ? 'source-option selected' : 'source-option'} onClick={() => setSourceMode('wechat')}>
                   <MessageCircle size={18} />
                   <span>本机微信</span>
@@ -984,6 +1323,22 @@ function App() {
                   <span>{file ? file.name : '选择 messages.json'}</span>
                   <small>{file ? Math.round(file.size / 1024) + ' KB' : '支持微信导出的对象格式或消息数组'}</small>
                 </button>
+              ) : sourceMode === 'archive' ? (
+                <div className="archive-source-panel">
+                  <button className="upload-drop" onClick={() => archiveRef.current && archiveRef.current.click()}>
+                    <Archive size={22} />
+                    <span>{archiveFile ? archiveFile.name : '选择聊天记录压缩包'}</span>
+                    <small>{archiveFile ? Math.round(archiveFile.size / 1024) + ' KB' : '微信「导出聊天记录」得到的 zip'}</small>
+                  </button>
+                  <div className="selected-group-note">
+                    <ShieldCheck size={15} /> 本地解析 zip 内的聊天记录文本与附件，只读、不上传原始聊天内容；解出的消息包保存在被 Git 忽略的本地目录。
+                  </div>
+                  {archiveFile && (
+                    <button className="button button-quiet archive-clear" onClick={() => setArchiveFile(null)}>
+                      <X size={14} /> 移除已选压缩包
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="wechat-source-panel">
                   <div className="wechat-status-line">
@@ -1059,17 +1414,20 @@ function App() {
               <div className="draft-range-note">当前设置：<strong>{draftDateRangeLabel}</strong></div>
               <p className="range-help">可只填一端；筛选先于候选聚类。分析基准日仍用于判断 DDL 是否临近或逾期。</p>
             </div>
-            <p className="privacy-note">{sourceMode === 'wechat' ? '本机微信入口只读导出 JSON 或本地解密 SQLite；只有选择远程 Jev 时，候选片段才会发送到你填写的 API。' : 'Jev 模式会把候选消息片段发送到你选择的 API；本地模式不会上传聊天内容。'}</p>
+            <p className="privacy-note">{sourceMode === 'wechat' ? '本机微信入口只读导出 JSON 或本地解密 SQLite；只有选择远程判断时，候选片段才会发送到你填写的 API。' : provider === 'local' ? '本地模式不会上传聊天内容，全部判断在本机完成。' : '远程模式会把候选消息片段发送到你选择的 API；本地模式不会上传聊天内容。'}</p>
             <div className="form-section">
               <label className="field-label">判断提供方</label>
               <div className="provider-options">
                 <button className={provider === 'local' ? 'selected' : ''} onClick={() => setProvider('local')}>
                   <span><Database size={16} /> 本地 Jev 基线</span><small>规则 + typed reducer，不上传</small>
                 </button>
-                <button className={provider === 'jev' ? 'selected' : ''} onClick={() => setProvider('jev')}>
+                <button className={provider === 'jev' ? 'selected' : ''} onClick={() => selectProvider('jev')}>
                   <span><Sparkles size={16} /> TypeSafe Jev</span><small>官方 System One endpoint</small>
                 </button>
-                <button className={provider === 'custom' ? 'selected' : ''} onClick={() => setProvider('custom')}>
+                <button className={provider === 'deepseek' ? 'selected' : ''} onClick={() => selectProvider('deepseek')}>
+                  <span><Brain size={16} /> DeepSeek</span><small>OpenAI 兼容接口</small>
+                </button>
+                <button className={provider === 'custom' ? 'selected' : ''} onClick={() => selectProvider('custom')}>
                   <span><SlidersHorizontal size={16} /> 自定义 Jev API</span><small>兼容 state + questions</small>
                 </button>
               </div>
@@ -1079,11 +1437,19 @@ function App() {
                 <div className="form-section">
                   <label className="field-label" htmlFor="endpoint">Endpoint</label>
                   <input id="endpoint" className="text-input" value={endpoint} onChange={(event) => setEndpoint(event.target.value)} />
+                  {provider === 'deepseek' && <p className="range-help">填 base_url（如 https://api.deepseek.com）会自动补 /chat/completions。缺省用官方地址。</p>}
                 </div>
                 <div className="form-section inline-fields">
                   <div>
                     <label className="field-label" htmlFor="model">模型标识</label>
-                    <input id="model" className="text-input" value={model} onChange={(event) => setModel(event.target.value)} />
+                    {provider === 'deepseek' ? (
+                      <select id="model" className="text-input" value={model} onChange={(event) => setModel(event.target.value)}>
+                        <option value="deepseek-flash">deepseek-flash</option>
+                        <option value="deepseek-v4-pro">deepseek-v4-pro</option>
+                      </select>
+                    ) : (
+                      <input id="model" className="text-input" value={model} onChange={(event) => setModel(event.target.value)} />
+                    )}
                   </div>
                   <div>
                     <label className="field-label" htmlFor="max-candidates">API 调用上限</label>
@@ -1108,6 +1474,251 @@ function App() {
                 {running ? '运行中' : '应用并分拣'}
               </button>
             </div>
+          </aside>
+        </div>
+      )}
+
+      {profileOpen && (
+        <div className="drawer-backdrop" onClick={() => setProfileOpen(false)}>
+          <aside className="settings-drawer profile-drawer" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <span className="inspector-kicker"><UserRound size={14} /> 我的画像</span>
+                <h2>让分拣知道你关心什么</h2>
+              </div>
+              <button className="icon-button" title="关闭" onClick={() => setProfileOpen(false)}><X size={18} /></button>
+            </div>
+
+            <div className="form-section">
+              <label className="toggle-line">
+                <span>
+                  <strong>启用画像增强</strong>
+                  <small>开启后，判断时多问一个「跟我有没有关系」，据此温和调整重要性</small>
+                </span>
+                <button
+                  className={'toggle ' + (profile.enabled ? 'on' : '')}
+                  aria-label="启用画像增强"
+                  onClick={() => patchProfile({ enabled: !profile.enabled })}
+                ><span /></button>
+              </label>
+              {!profile.enabled && (
+                <div className="selected-group-note">
+                  <ShieldCheck size={15} /> 默认关闭。关闭时判断流程与没有画像时完全一致，不会发送任何额外信息。
+                </div>
+              )}
+            </div>
+
+            <div className="form-section">
+              <label className="field-label" htmlFor="profile-college">学院</label>
+              <select
+                id="profile-college"
+                className="text-input"
+                value={profile.college || ''}
+                onChange={(event) => patchProfile({ college: event.target.value })}
+              >
+                <option value="">未填写</option>
+                {profileMeta.colleges.map((college) => (
+                  <option key={college} value={college}>{college}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-section inline-fields">
+              <div>
+                <label className="field-label" htmlFor="profile-major">专业</label>
+                <input
+                  id="profile-major"
+                  className="text-input"
+                  placeholder="如：计算机科学与技术"
+                  value={profile.major || ''}
+                  maxLength={profileMeta.limits && profileMeta.limits.major ? profileMeta.limits.major : 40}
+                  onChange={(event) => patchProfile({ major: event.target.value })}
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="profile-grade">年级</label>
+                <select
+                  id="profile-grade"
+                  className="text-input"
+                  value={profile.grade || ''}
+                  onChange={(event) => patchProfile({ grade: event.target.value })}
+                >
+                  <option value="">未填写</option>
+                  {Array.from(
+                    { length: (profileMeta.grade_range[1] - profileMeta.grade_range[0]) + 1 },
+                    (_, index) => String(profileMeta.grade_range[1] - index)
+                  ).map((year) => (
+                    <option key={year} value={year}>{year} 级</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="form-section">
+              <label className="field-label" htmlFor="profile-interests">关注方向</label>
+              <div className="interest-editor">
+                <div className="interest-tags">
+                  {(profile.interests || []).map((interest) => (
+                    <span key={interest} className="interest-tag">
+                      {interest}
+                      <button className="interest-remove" title="移除" onClick={() => removeInterest(interest)}><X size={12} /></button>
+                    </span>
+                  ))}
+                  {!(profile.interests || []).length && <span className="muted-note">还没有标签，比如「竞赛」「实习」「考研」</span>}
+                </div>
+                <div className="interest-add">
+                  <input
+                    id="profile-interests"
+                    className="text-input"
+                    placeholder="输入后回车添加"
+                    value={interestDraft}
+                    onChange={(event) => setInterestDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addInterest();
+                      }
+                    }}
+                  />
+                  <button className="button button-quiet" onClick={addInterest} disabled={!interestDraft.trim()}>添加</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="form-section">
+              <label className="field-label" htmlFor="profile-notes">补充描述 <span>自由文本，最多 {profileMeta.limits && profileMeta.limits.notes ? profileMeta.limits.notes : 300} 字</span></label>
+              <textarea
+                id="profile-notes"
+                className="text-input profile-notes"
+                rows={4}
+                placeholder="例如：正在准备考研，关注推免和奖学金；不住校，宿管通知可忽略。"
+                value={profile.notes || ''}
+                maxLength={profileMeta.limits && profileMeta.limits.notes ? profileMeta.limits.notes : 300}
+                onChange={(event) => patchProfile({ notes: event.target.value })}
+              />
+              <p className="range-help">这段描述会作为背景资料发给远程模型，并明确标注为「非指令」。只写与判断相关性有关的信息。</p>
+            </div>
+
+            <p className="privacy-note">画像只保存在本机 <code>data/attention-desk/profile.json</code>（已被 Git 忽略），不会自动上传。选择远程判断时，画像与候选消息片段一并发送，用于回答「相关性」这一项。</p>
+
+            <div className="drawer-footer">
+              {profileNotice && <span className="drawer-notice">{profileNotice}</span>}
+              <button className="button button-quiet" onClick={() => setProfileOpen(false)}>关闭</button>
+              <button className="button button-primary" onClick={() => saveProfile()} disabled={profileBusy}>
+                {profileBusy ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}
+                {profileBusy ? '保存中' : '保存画像'}
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {mailOpen && (
+        <div className="drawer-backdrop" onClick={() => setMailOpen(false)}>
+          <aside className="settings-drawer mail-drawer" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <span className="inspector-kicker"><Mail size={14} /> 邮件摘要</span>
+                <h2>发送 DDL 待办清单</h2>
+              </div>
+              <button className="icon-button" title="关闭" onClick={() => setMailOpen(false)}><X size={18} /></button>
+            </div>
+
+            <div className="mail-status-line">
+              <span className={'status-dot ' + (mailStatus && mailStatus.ready ? 'local' : 'remote')} />
+              <span>
+                {mailStatus
+                  ? (mailStatus.ready
+                    ? <>发件邮箱 <strong>{mailStatus.sender}</strong>{mailStatus.daily_send_quota ? ` · 今日配额 ${mailStatus.daily_send_quota} 封` : ''}</>
+                    : (mailStatus.reason || '邮件链路未就绪'))
+                  : '正在检测邮件链路…'}
+              </span>
+            </div>
+
+            <div className="form-section">
+              <label className="field-label">正文格式</label>
+              <div className="mail-format-switch" role="group" aria-label="邮件正文格式">
+                <button
+                  className={mailFormat === 'html' ? 'active' : ''}
+                  onClick={() => changeMailFormat('html')}
+                >
+                  <LayoutPanelTop size={15} />
+                  <span>卡片式富文本</span>
+                  <small>HTML · 推荐</small>
+                </button>
+                <button
+                  className={mailFormat === 'text' ? 'active' : ''}
+                  onClick={() => changeMailFormat('text')}
+                >
+                  <FileText size={15} />
+                  <span>纯文本</span>
+                  <small>兼容性最好</small>
+                </button>
+              </div>
+            </div>
+
+            <div className="form-section">
+              <label className="field-label" htmlFor="mail-recipients">收件人 <span>支持多个，逗号分隔</span></label>
+              <textarea
+                id="mail-recipients"
+                className="text-input mail-recipients"
+                rows={2}
+                placeholder="a@example.com, b@example.com"
+                value={mailRecipients}
+                onChange={(event) => { setMailRecipients(event.target.value); setMailPreview(null); }}
+              />
+              <p className="range-help">地址只保存在本机浏览器；每次修改后需要重新生成预览。</p>
+            </div>
+
+            <div className="mail-actions">
+              <button className="button button-quiet" onClick={() => prepareMail()} disabled={mailBusy || !result}>
+                {mailBusy && !mailPreview ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
+                生成 / 刷新预览
+              </button>
+            </div>
+
+            {mailNotice && (
+              <div className={'mail-notice ' + (mailSent ? 'ok' : 'warn')}>
+                {mailSent ? <Check size={15} /> : <AlertTriangle size={15} />}
+                <span>{mailNotice}{mailSent && mailSent.recipients ? ` 收件人：${mailSent.recipients.join('、')}` : ''}</span>
+              </div>
+            )}
+
+            {mailPreview && (
+              <>
+                <div className="form-section">
+                  <label className="field-label">
+                    主题
+                    <span className="mail-format-tag">
+                      {mailPreview.body_format === 'html' ? '卡片式富文本' : '纯文本'}
+                    </span>
+                  </label>
+                  <div className="mail-subject">{mailPreview.subject}</div>
+                  <label className="field-label mail-body-label">正文预览</label>
+                  {mailPreview.body_format === 'html' ? (
+                    <iframe
+                      className="mail-body-frame"
+                      title="邮件正文预览"
+                      sandbox=""
+                      srcDoc={mailPreview.body}
+                    />
+                  ) : (
+                    <pre className="mail-body-preview">{mailPreview.body}</pre>
+                  )}
+                </div>
+                <div className="mail-confirm-bar">
+                  <span className="mail-confirm-note"><ShieldCheck size={14} /> 点确认才会真正发出</span>
+                  <button className="button button-primary" onClick={confirmMailSend} disabled={mailBusy}>
+                    {mailBusy ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}
+                    {mailBusy ? '发送中' : '确认发送'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {!mailPreview && !mailNotice && (
+              <p className="privacy-note mail-hint">邮件只包含截止时间与摘要，不含聊天原文；生成预览后可以再确认一次才发送。</p>
+            )}
           </aside>
         </div>
       )}

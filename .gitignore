@@ -20,8 +20,8 @@ out/
 cache/
 probe/
 
-# 首次运行抓取的官网首页留档
-index.html
+# 首次运行抓取的官网首页留档（仅仓库根目录那一份；工作台的入口页必须入库）
+/index.html
 
 # 运行时生成的站点清单（版本化的事实数据在 data/sites.json）
 sites.json
@@ -78,3 +78,6 @@ attention-desk/output/
 .env
 .env.*
 *.db
+
+# 开发过程截图产物（不入库）
+data/*.png

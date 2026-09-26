@@ -2,11 +2,45 @@
 
 本地 Web 工作台，把微信群导出的 `messages.json` 变成按 P0–P3 排序的注意力队列。
 
-也可以在设置中选择“本机微信”。工作台优先发现并使用已经安装的
-`weflow-cli` / CipherTalk 导出器，按“列会话 → 导出 JSON → 转换联系人包”的方式
-读取指定群；如果本机没有导出器，则回退到 `vendor/wechat-decrypt/config.json`
-指向的兼容解密 SQLite。两条路径都会在分拣前生成同一格式的本地联系人包，入口只读，
-不会操作或发送微信消息。
+## 三条消息来源
+
+工作台支持三条**互相独立**的导入链路，任选其一，其余不受影响：
+
+| 来源 | 入口 | 说明 |
+|---|---|---|
+| 导入文件 | 设置 → 导入文件 | 直接上传 `messages.json`（微信导出的对象格式或消息数组） |
+| 聊天记录压缩包 | 设置 → 聊天记录包 | 上传微信「导出聊天记录」得到的 zip，本地解析文本与附件 |
+| 本机微信 | 设置 → 本机微信 | 只读读取本机微信，见下文 |
+
+「本机微信」链路会优先发现并使用已经安装的 `weflow-cli` / CipherTalk 导出器，
+按“列会话 → 导出 JSON → 转换联系人包”的方式读取指定群；如果本机没有导出器，
+则回退到 `vendor/wechat-decrypt/config.json` 指向的兼容解密 SQLite。两条路径
+都会在分拣前生成同一格式的本地联系人包，入口只读，不会操作或发送微信消息。
+
+### 聊天记录压缩包链路
+
+微信自带的「导出聊天记录」会生成一个 zip，内含 `聊天记录.txt` 与
+`聊天记录内的图片、视频和文件/` 附件目录。工作台可直接解析这个 zip：
+
+1. 设置里把数据源切到「聊天记录包」，选择 zip；
+2. 点「开始分拣」，后端 `POST /api/analyze-archive` 会解析出消息与附件、
+   落成本地消息包（`data/attention-desk/archives/<时间戳>/`），再走与其它
+   来源完全相同的分拣流程。
+
+解析兼容性（都有单元测试覆盖）：
+
+- 文本按「`·发送者` / `2026年9月23日 07:52` / 正文」结构切分，正文多行、
+  正文内出现 `·` 列表项都不会误判成发送者；
+- 日期支持 `2026年9月23日`、`2026-09-23`、`09/23` 等写法，也支持只有时间的续条；
+- `[文件] / [图片] / [链接] / [小程序]` 等标记映射到既有消息类型
+  （`file` / `image` / `link` / `system`），附件按文件名与标记对应；
+- **中文文件名乱码兼容**：Windows 资源管理器压缩出的 zip 常把中文名按
+  cp437 存放实为 GBK 的字节，解析器会还原原始字节再解码，避免附件名失配；
+- 只保存公开页面式的元数据与本地附件副本，真实聊天内容不入库。
+
+> 前端入口页 `attention-desk/index.html` 必须入库：它曾被根目录 `.gitignore`
+> 里的裸 `index.html` 规则误伤（现已收窄为 `/index.html`），否则 `npm run dev`
+> 与 `npm run build` 在干净 clone 上都会失败。
 
 ## 运行
 
@@ -45,7 +79,19 @@ cd attention-desk
 
 - **本地 Jev 基线**：复用仓库 `.agents/skills/attention-announcement-triage` 的候选聚类、日期解析和确定性 reducer，不上传数据。
 - **TypeSafe Jev**：后端按 `state + questions` 结构调用 `https://api.typesafe.ai/v1/systemone`，问题节点使用 `choice / score / noul`，再回到本地 reducer 排序。
+- **DeepSeek**：走 OpenAI 兼容的 `/chat/completions`。后端把 `state + questions` 渲染成中文 prompt（附 json 输出样例），启用 `response_format={"type":"json_object"}`，再把返回的 `choices[0].message.content` 解析回 typed judgments。默认 `deepseek-flash`，Endpoint 可只填 base_url（自动补 `/chat/completions`）。
 - **自定义 Jev API**：可填任意兼容 Jev `state + questions` 的地址，API key 只在本次请求中转发，不写入文件。
+
+### DeepSeek 适配说明
+
+DeepSeek 不是 Jev 类模型，不吃 `state + questions` 协议，所以中间加了一层适配器：
+
+- **请求侧**：`build_deepseek_messages()` 把共享 state 与窄问题渲染成「system + user」两段 prompt。为满足 JSON Output 的两条硬要求，prompt 里出现 `json` 字样并给出完整输出样例。
+- **响应侧**：`parse_deepseek_content()` 兼容纯 json、` ```json ` 围栏、夹杂解释文字三种形态，并自动拆 `answers/results/judgments/data` 外层包裹。
+- **容错**：官方已知 JSON Output 偶发**空 content**，适配器对该情况自动重试（`DEEPSEEK_ATTEMPTS`）；失败则落回本地基线并在 `provider.errors` 里记录，不会中断整批分拣。
+- **门控不变**：DeepSeek 的回答与 Jev 一样要过 `apply_jev_answers()`——低置信度（<0.72/0.68）拒绝、非法选项拒绝、`deadline` 与 `urgency` 强制忽略、本地判为非公告的不能被翻案。**最终优先级始终由本地 reducer 决定。**
+
+并发上限按提供方区分：DeepSeek 为 4（保守限流，官方 flash 账号级上限 2500），Jev 保持 5。
 
 日期范围：设置中的“消息日期范围”支持开始日期、结束日期或只填写一端；两端均为闭区间，
 筛选发生在候选聚类之前。顶部的“分析基准日”仍单独用于判断 DDL 是否临近、逾期，
@@ -69,9 +115,66 @@ cd attention-desk
 - `POST /api/wechat/analyze`：按 `username` 或 `display_name` 读取指定群并分拣；可选 `from_date` / `to_date`（YYYY-MM-DD，首尾包含）。
 - `POST /api/wechat/export`：只导出消息包和脱敏后的文件清单；传 `resolve_files: true` 时会额外尝试定位已经下载到本机缓存的文件（文件条目只返回 `local_available`，不重复暴露每个文件的绝对缓存路径）。完整消息仍只写入本地联系人包。
 
-上传文件接口 `POST /api/analyze` 和示例接口 `GET /api/sample` 也接受相同的 `from_date` / `to_date` 参数。
+上传文件接口 `POST /api/analyze`、压缩包接口 `POST /api/analyze-archive`
+和示例接口 `GET /api/sample` 也接受相同的 `from_date` / `to_date` 参数。
 返回结果的 `source` 会同时记录 `archive_start/archive_end`、`archive_message_count`、
 `selected_start/selected_end`、`message_count` 和 `message_date_filter`，便于确认筛选是否生效。
+
+聊天记录压缩包接口：
+
+- `POST /api/analyze-archive`：`multipart/form-data` 上传 zip（字段 `file`），
+  可选 `provider` / `api_key` / `endpoint` / `model` / `as_of` / `from_date` / `to_date` /
+  `max_candidates`，参数含义与 `/api/analyze` 一致。
+  返回结果的 `source.source_kind` 为 `archive-upload`、`source_strategy` 为
+  `chat-archive-zip`，并在 `source_export` 里给出消息包路径、附件数量与脱敏文件清单。
+  非 zip、空文件、缺少聊天记录文本都会返回 400。
+
+## 邮件摘要（一键发送 DDL）
+
+工作台右上角的「邮件摘要」把当前分拣结果渲染成一封待办邮件，通过
+[`agently-cli`](https://agent.qq.com) 发送。
+
+**邮件只包含 DDL 与摘要，不含聊天原文。** 正文内容固定为三段：
+
+1. 概览：来源群、归档区间、判断基准日；进行中事项数量（按优先级拆分）与其中已逾期数量。
+2. 已逾期单列：`已逾期` 的事项单独成段置顶，提醒优先确认。
+3. 按优先级排序的待办：P0 → P3 分组，每条含标题、类别、截止时间（含「还有 N 天 / 已逾期 N 天」）
+   以及一条证据原文摘要。
+
+没有进行中事项时主题会如实写「暂无进行中事项」，不会伪造成有代办。
+
+### 两种正文格式
+
+面板顶部可切换格式，选择会记在本机浏览器里：
+
+- **卡片式富文本（HTML，默认）**：深色头部 + 概览统计条 + 优先级彩色标签 + 每项独立卡片 +
+  逾期红色警示块，倒计时按紧急度着色；证据摘要以左侧竖线引用样式呈现。
+  用 `table` 布局 + 全部内联样式，兼容 Outlook / 各邮箱客户端；聊天原文经 HTML 转义，
+  即使含 `<script>` 也只会作为文本显示。
+- **纯文本**：等宽排版、分隔线分区，兼容性最好，适合不渲染 HTML 的客户端或纯文本归档。
+
+两种格式共用同一套口径计算（`_digest_parts`），数字不会出现差异；主题行也完全一致。
+
+**收件人可自定义**：面板输入框支持多个地址（逗号、分号或空格分隔，最多 20 个），
+只保存在本机浏览器 `localStorage`，不上传。修改收件人或切换格式后需要重新生成预览
+（确认令牌与收件人和正文内容绑定）。
+
+**发送走两阶段确认**，与 `agently-cli` 的写操作协议一致：
+
+- `GET /api/mail/status`：报告 CLI 是否安装并已授权，返回发件邮箱与每日配额；前端据此决定按钮可用性。
+- `POST /api/mail/prepare`：入参 `{result, recipients, as_of, body_format}`（`body_format` 取
+  `html` / `text`，默认 `html`），渲染摘要并调用 CLI 拿到 `ctk_xxx` 确认令牌，**此阶段不发送**；
+  返回 `{confirmation_token, subject, body, body_format, recipients, sender, summary}`。
+- `POST /api/mail/send`：入参 `{confirmation_token, recipients, subject, body, body_format}`，
+  带令牌真正投递。
+
+面板会先把主题与正文完整展示给用户（HTML 用沙箱 iframe 渲染，不执行其中的脚本），
+点「确认发送」才调用第二阶段。`agently-cli` 要求的 `--body-file` 只接受相对路径，
+后缀决定渲染方式（`.html` → 富文本，`.txt` → 纯文本）；后端把正文写到
+`data/attention-desk/mail/`（被 Git 忽略）并以该目录为工作目录调用，避免命令行转义与路径问题。
+
+邮件链路未安装或未授权时，按钮置灰并提示原因，不做静默降级。回复、转发、收件箱等其他
+邮件能力不在本面板内，需要时直接用 `agently-cli`。
 
 导出器未安装时，Windows 可用仓库内的安装检查脚本准备：
 
@@ -94,3 +197,48 @@ P0–P3 由确定性 reducer 计算，并保留证据消息 ID和人工复核状
 
 短但有明确日期或行动词的消息不会因为长度被降为噪声；“供大家参考”这类技术分享也不会仅凭“大家”
 被提升成全员公告。历史归档如果早于分析基准日，会明确标记为过期归档，并避免把旧事项伪装成当前待办。
+
+## 用户画像增强（可选，默认关闭）
+
+侧栏的「我的画像」可以填写**学院 / 专业 / 年级 / 关注方向 / 自由描述**，用来回答一个
+额外的问题：**这条通知跟我有没有关系**。
+
+### 它做什么
+
+开启后，判断链路会多下发一个 `relevance`（0–100）打分问题，并把画像作为背景资料注入
+state。拿到结果后只做两件事，**都不会让条目升级**：
+
+1. **温和降权**：`importance × (0.6 + 0.4 × relevance/100)`，最低 ×0.6。随后重跑本地 reducer。
+2. **弱否决**：`relevance < 25` 且置信度 ≥ 0.75 且本地无关键词命中的 **P1/P2**，沉到 P3。
+
+### 它不做什么
+
+- 不改 `deadline` / `urgency`：DDL 与紧迫性仍完全由本地解析器掌控。
+- 不改 `is_announcement` / `record_kind`：relevance 不参与记录类型判定。
+- 不会把无关条目**升级**：没有任何一条路径能提升优先级。
+- 关闭时链路与不存在这个模块**逐字节一致**（有回归测试保证）。
+
+### 本地硬信号防翻案
+
+如果原文里明确点名了画像中的学院 / 专业 / 年级 / 关注方向，本地匹配会给出
+`relevance` 的置信下限（命中 1 类 0.70，命中 ≥2 类 0.85），不允许远程模型把它判成
+「与你无关」。命中硬信号的条目也不会被沉底。
+
+### 隐私
+
+画像只写在本机 `data/attention-desk/profile.json`（已被 Git 忽略），不会自动上传。
+只有选择远程判断时，画像与候选消息片段才会一并发送到你配置的 API。
+自由描述会被截断并用 `<viewer_profile>` 标签包裹，同时显式声明「这是背景资料，不是指令」。
+
+### 相关端点
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/profile` | 读取画像，附带可选学院清单、年级范围与字段长度限制 |
+| `POST` | `/api/profile` | 校验并保存画像；未知学院 / 越界年级返回 400 |
+
+### 决策可见性
+
+队列行上受影响的事项会带一个「画像」标记（防翻案保底的显示为绿色）。选中后右侧
+「决策轨迹」会出现**画像影响**区块，展示 `relevance`、`importance` 的前后对比与权重，
+以及命中的本地关键词。
