@@ -116,6 +116,17 @@ npm run build
 - `POST /api/inbox/import`：传 `filename`（来自列表条目）及与 `/api/analyze-archive`
   相同的可选参数；导入并分拣，成功后更新 manifest 状态。
 
+换机器部署时，这条链路依赖两个目录位置，都可用环境变量覆盖，不需要改代码：
+
+| 环境变量 | 默认值 | 作用 |
+|---|---|---|
+| `ATTENTION_INBOX_WATCH_DIR` | `~/.workbuddy/app/tmp/chat-history` | WorkBuddy 微信转发落盘目录 |
+| `ATTENTION_INBOX_POLL` | `10` | 轮询间隔秒数，设 0 关闭自动收取 |
+
+代码本身跨平台（只用标准库，路径走 `Path.home()`），Windows / macOS / Linux
+都可运行。目标机器上没有那个分享目录时不会报错：收件箱如实报告
+`watch_dir_exists: false`，自动收取停用，手动上传 zip 的链路照常可用。
+
 「本机微信」链路会优先发现并使用已经安装的 `weflow-cli` / CipherTalk 导出器，
 按“列会话 → 导出 JSON → 转换联系人包”的方式读取指定群；如果本机没有导出器，
 则回退到 `vendor/wechat-decrypt/config.json` 指向的兼容解密 SQLite。两条路径

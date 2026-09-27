@@ -1,16 +1,18 @@
 import io
 import json
 import os
+import tempfile
 import time
 import unittest
 import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from fastapi.testclient import TestClient
 
 from server import main
-from server.inbox import InboxStore
+from server.inbox import InboxStore, default_watch_dir
 from server.test_chat_archive import CHAT_TEXT
 
 
@@ -133,6 +135,44 @@ class InboxStoreTests(unittest.TestCase):
         self.assertTrue(self.store.status()["watcher_running"])
         self.store.stop_watcher()
         self.assertFalse(self.store.status()["watcher_running"])
+
+
+class WatchDirResolutionTests(unittest.TestCase):
+    def test_env_override_wins(self):
+        with mock.patch.dict(
+            os.environ, {"ATTENTION_INBOX_WATCH_DIR": "~/custom-chat-dir"}
+        ):
+            self.assertEqual(
+                default_watch_dir(), Path("~/custom-chat-dir").expanduser()
+            )
+            store = InboxStore(Path(tempfile.mkdtemp()) / "inbox")
+            self.assertEqual(store.watch_dir, Path("~/custom-chat-dir").expanduser())
+
+    def test_default_is_workbuddy_chat_history(self):
+        # 只移除目标变量：清空整个 environ 会让 Windows 上的 Path.home() 失效
+        with mock.patch.dict(os.environ):
+            os.environ.pop("ATTENTION_INBOX_WATCH_DIR", None)
+            self.assertEqual(
+                default_watch_dir(),
+                Path.home() / ".workbuddy" / "app" / "tmp" / "chat-history",
+            )
+        # 空字符串等同未设置
+        with mock.patch.dict(os.environ, {"ATTENTION_INBOX_WATCH_DIR": "   "}):
+            self.assertEqual(
+                default_watch_dir(),
+                Path.home() / ".workbuddy" / "app" / "tmp" / "chat-history",
+            )
+
+    def test_missing_watch_dir_degrades_gracefully(self):
+        # 换到没装 WorkBuddy 的机器：目录不存在时不应报错
+        with TemporaryDirectory() as tmp:
+            store = InboxStore(
+                Path(tmp) / "inbox",
+                watch_dir=Path(tmp) / "absent" / "chat-history",
+                poll_seconds=0,
+            )
+            self.assertEqual(store.scan(), [])
+            self.assertFalse(store.status()["watch_dir_exists"])
 
 
 class InboxEndpointTests(unittest.TestCase):

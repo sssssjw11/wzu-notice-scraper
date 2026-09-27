@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import threading
 import time
@@ -36,8 +37,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# WorkBuddy 收到微信转发聊天记录时的落盘目录
-WORKBUDDY_CHAT_DIR = Path.home() / ".workbuddy" / "app" / "tmp" / "chat-history"
+
+def default_watch_dir() -> Path:
+    """默认监视 WorkBuddy 微信分享落盘目录。
+
+    换机器或 WorkBuddy 改版本导致落盘位置不同时，不需要改代码，
+    设环境变量 ``ATTENTION_INBOX_WATCH_DIR`` 指向新目录即可。
+    """
+    override = os.environ.get("ATTENTION_INBOX_WATCH_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".workbuddy" / "app" / "tmp" / "chat-history"
+
+
+# 默认值（可被 ATTENTION_INBOX_WATCH_DIR 覆盖）；InboxStore 不传 watch_dir 时使用
+WORKBUDDY_CHAT_DIR = default_watch_dir()
 
 DEFAULT_POLL_SECONDS = 10
 # 只拷 mtime 已稳定超过该秒数的文件，避免读到写到一半的 zip
@@ -58,7 +72,8 @@ class InboxStore:
         poll_seconds: int = DEFAULT_POLL_SECONDS,
     ) -> None:
         self.inbox_root = Path(inbox_root)
-        self.watch_dir = Path(watch_dir) if watch_dir is not None else WORKBUDDY_CHAT_DIR
+        # 不传 watch_dir 时按环境变量 / 默认位置解析，便于跨机器部署
+        self.watch_dir = Path(watch_dir) if watch_dir is not None else default_watch_dir()
         self.poll_seconds = max(0, int(poll_seconds))
         self.manifest_path = self.inbox_root / "manifest.json"
         self._lock = threading.Lock()
