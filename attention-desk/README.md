@@ -2,6 +2,91 @@
 
 本地 Web 工作台，把微信群导出的 `messages.json` 变成按 P0–P3 排序的注意力队列。
 
+它也可以作为温州大学学院官网的公开通知阅读器使用：列表扫描保留轻量，正文、分类证据和活动截止日期按需读取。工作台面向桌面端，本地启动、本地保存，默认不需要云服务。
+
+运行要求：Python 3.10+、Node.js 18+ 和 npm 9+。
+
+## 目录
+
+- [5 分钟上手](#5-分钟上手)
+- [你会看到什么](#你会看到什么)
+- [四条消息来源](#四条消息来源)
+- [运行](#运行)
+- [学院官网监测](#学院官网监测)
+- [API 模式](#api-模式)
+- [邮件摘要](#邮件摘要一键发送-ddl)
+- [JEV 边界](#jev-边界)
+- [用户画像增强](#用户画像增强可选默认关闭)
+
+## 5 分钟上手
+
+### Windows
+
+在仓库根目录打开 PowerShell：
+
+```powershell
+cd attention-desk
+.\start.ps1 -Install
+```
+
+打开脚本输出的地址，默认是 [http://127.0.0.1:5173](http://127.0.0.1:5173)。API 默认运行在 `http://127.0.0.1:8765`。
+
+`-Install` 会执行 `npm install`，创建仓库根目录的 `.venv`，并安装 `server/requirements.txt`。已经安装过依赖时直接运行：
+
+```powershell
+.\start.ps1
+```
+
+端口被占用时：
+
+```powershell
+.\start.ps1 -WebPort 5174 -ApiPort 8865
+```
+
+### Linux / macOS
+
+```bash
+cd attention-desk
+python3 -m venv ../.venv
+../.venv/bin/python -m pip install -r server/requirements.txt
+npm ci
+```
+
+终端一启动 API：
+
+```bash
+../.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8765
+```
+
+终端二启动前端：
+
+```bash
+ATTENTION_API_PORT=8765 npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+然后打开 `http://127.0.0.1:5173`。
+
+### 本地生产预览
+
+如果不需要 Vite 开发服务器，可以让 FastAPI 直接提供构建后的页面：
+
+```bash
+npm ci
+npm run build
+../.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8765
+```
+
+打开 `http://127.0.0.1:8765`。生产模式要求 `attention-desk/dist/` 已经存在。
+
+> 这是本地桌面工作台，不包含账号系统、云端数据库或公网反向代理配置。若要在局域网临时访问，请自行评估数据风险，并把 uvicorn 绑定地址改为明确的内网地址。
+
+## 你会看到什么
+
+- **微信群通知**：导入或读取聊天记录，筛出需要行动的事项。
+- **公开来源：温州大学 · 学院官网**：扫描 22 个学院公开通知入口，跟踪发布日期、分类、未读和完成状态。
+- **设置**：选择数据入口、日期范围、判断提供方、Jev / DeepSeek 参数和提醒频率。
+- **邮件摘要**：预览当前待办，确认后调用本机邮件 CLI 发送。
+
 ## 四条消息来源
 
 工作台支持四条**互相独立**的导入链路，任选其一，其余不受影响：
@@ -166,7 +251,7 @@ DeepSeek 不是 Jev 类模型，不吃 `state + questions` 协议，所以中间
 工作台右上角的「邮件摘要」把当前分拣结果渲染成一封待办邮件，通过
 [`agently-cli`](https://agent.qq.com) 发送。
 
-**邮件只包含 DDL 与摘要，不含聊天原文。** 正文内容固定为三段：
+**邮件不包含完整聊天记录。** 正文只保留 DDL、摘要和每项的一条证据摘录，固定为三段：
 
 1. 概览：来源群、归档区间、判断基准日；进行中事项数量（按优先级拆分）与其中已逾期数量。
 2. 已逾期单列：`已逾期` 的事项单独成段置顶，提醒优先确认。

@@ -1,289 +1,535 @@
-# 温州大学通知公告抓取工具
+# 温州大学通知工作台
 
-从温州大学官网页脚出发，串行抓取各学院／部门官网的通知公告，下载正文图文与附件，
-核对完整性后打包成离线图文库。
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+[![License](https://img.shields.io/github/license/sssssjw11/wzu-notice-scraper)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/sssssjw11/wzu-notice-scraper?style=social)](https://github.com/sssssjw11/wzu-notice-scraper/stargazers)
+[![Latest commit](https://img.shields.io/github/last-commit/sssssjw11/wzu-notice-scraper)](https://github.com/sssssjw11/wzu-notice-scraper/commits/main)
 
-面向的是一类很常见的场景：一个学校/单位的官网群由几十个二级子站组成，通知散落在
-各处，官方没有统一的检索入口。本项目把「散落 → 汇总 → 离线可用」这条链路做完整。
+温州大学通知公告的抓取、归档与行动分拣工具。
 
-## Attention Desk 工作台
+这个仓库包含两条可以单独使用的产品线：
 
-仓库现已包含 `attention-desk/` 本地 Web 工作台，可把微信群 `messages.json` 整理成
-按截止状态和优先级排序的行动队列，支持 Jev 结构化判断、指定日期范围、完成归档和撤销。
-工作台有三条互相独立的导入链路：直接上传 `messages.json`、上传微信「导出聊天记录」
-得到的 zip 压缩包（本地解析文本与附件），以及只读读取本机微信。
-判断提供方支持本地规则基线、TypeSafe Jev、DeepSeek（OpenAI 兼容）和自定义 Jev API。
-分拣完成后可以把进行中的 DDL 待办一键渲染成邮件（收件人自定义、发送前二次确认），
-支持卡片式富文本与纯文本两种格式，只含截止时间与摘要、不含聊天原文。“学院官网监测”是第二个消息来源：复用本仓库的站点目录、请求节流和 HTML 解析器，
-检查 22 个学院的公开通知入口，在工作台里查看新增公告与来源异常。它只保存标题、日期、
-栏目和链接，不下载正文或附件；原有完整离线抓取流程仍可按下文命令单独运行。
+1. **官网抓取器**：从温州大学官网页脚发现学院、部门和其他二级单位站点，串行抓取公开通知，按需下载正文、图片和附件，生成可离线浏览的图文库。
+2. **Attention Desk 工作台**：把微信群导出的聊天记录、微信转发收件箱、本机微信或 `messages.json` 整理成按截止状态和优先级排序的行动队列，同时监测温州大学学院官网的公开公告。
+
+项目的默认取向是：**少操作、易读、可追溯、尊重来源站点**。所有抓取请求串行执行；需要认证的页面会被记录并跳过；远程模型只负责窄问题的结构化辅助判断，最终优先级由本地规则确定。
+
+> 当前交付形态是桌面端本地 Web 应用，仓库暂未提供独立的 Windows `.exe` 安装包。数据默认保存在本机；项目不含公共云端部署，也不会自动上传私人聊天记录。
+
+## 目录
+
+- [功能概览](#功能概览)
+- [工作原理](#工作原理)
+- [快速开始](#快速开始)
+- [Attention Desk 部署](#attention-desk-部署)
+- [Attention Desk 使用](#attention-desk-使用)
+- [官网通知抓取流程](#官网通知抓取流程)
+- [数据与隐私](#数据与隐私)
+- [目录结构](#目录结构)
+- [测试与质量检查](#测试与质量检查)
+- [常见问题](#常见问题)
+- [贡献与许可](#贡献与许可)
+
+## 功能概览
+
+### Attention Desk
+
+- 微信 `messages.json` 导入。
+- 微信「导出聊天记录」zip 本地解析，支持正文、图片、文件等附件清单。
+- 转发收件箱：把聊天记录转发给 WorkBuddy，工作台自动发现并导入。
+- 本机微信只读入口：发现已安装的导出器，或读取已有本地解密 SQLite。
+- 消息日期范围筛选，分析基准日独立控制截止状态。
+- 本地 Jev 基线、TypeSafe Jev、DeepSeek 和自定义 Jev API。
+- P0–P3 优先级、待复核、已完成、超期归档和撤销完成。
+- 截止日期动态状态：超期、今日截止、临近、宽裕、未排期。
+- 温州大学 22 个学院公开来源监测。
+- 公告分类：比赛 / 活动通知、公示、其他公告、待确认。
+- 公告发布日期、按需读取的活动 / 报名截止日期、原文证据和失败原因。
+- 未读、已读完、已完成三种状态独立保存。
+- 学院来源拖动排序、右键置顶和本机持久化。
+- DDL 邮件摘要预览，支持 HTML 和纯文本，两阶段确认后发送。
+
+### 官网抓取器
+
+- 从温州大学官网页脚提取二级单位站点清单。
+- 串行抓取通知列表，保留站点状态和来源信息。
+- 日期、栏目、标题、文章链接结构化落盘。
+- 按日期范围下载正文图文与附件。
+- 识别 CAS、验证码、失效附件和 PDF 正文等常见边界。
+- 生成 CSV、JSON、HTML 报告和可离线浏览的图文库。
+- 所有步骤支持断点续跑。
+
+## 工作原理
+
+```mermaid
+flowchart LR
+    A[微信消息或公开官网] --> B{数据入口}
+    B -->|messages.json / zip| C[本地解析]
+    B -->|本机微信| D[只读导出]
+    B -->|转发收件箱| E[收件箱扫描]
+    B -->|学院官网| F[串行列表扫描]
+    C --> G[候选聚类与日期解析]
+    D --> G
+    E --> G
+    G --> H{可选远程窄问题判断}
+    H --> I[本地确定性 reducer]
+    I --> J[行动队列 / 完成 / 归档]
+    F --> K[分类 / 发布日期 / 未读状态]
+    K --> L[按需读取正文与截止日期]
+    J --> M[Attention Desk]
+    L --> M
+```
+
+微信群处理遵循 JEV 风格的类型化判断：共享状态保存消息和证据，独立问题节点只回答布尔、选项或分数问题；日期、截止状态和最终优先级由本地逻辑计算。低置信度、非法枚举和远程覆盖会被拒绝。
+
+## 快速开始
+
+### 环境要求
+
+- Python 3.10 或更高版本（完整运行 Attention Desk；根目录抓取器本身可运行于 Python 3.9+）。
+- Node.js 18 或更高版本，npm 9 或更高版本。
+- Windows 推荐使用 PowerShell；Linux 和 macOS 可使用等价的 Python、npm 命令。
+- 官网抓取需要网络能访问目标公开站点；部分学院站点只允许校园网或学校 VPN。
+
+### 获取代码
+
+```bash
+git clone https://github.com/sssssjw11/wzu-notice-scraper.git
+cd wzu-notice-scraper
+```
+
+### 安装 Python 依赖
+
+根目录抓取器和 Attention Desk 使用两组依赖。建议在仓库根目录建立统一虚拟环境：
+
+```bash
+python -m venv .venv
+```
+
+Windows PowerShell：
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pip install -r attention-desk/server/requirements.txt
+```
+
+Linux / macOS：
+
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pip install -r attention-desk/server/requirements.txt
+```
+
+如果 PowerShell 阻止脚本执行，可以只对当前窗口临时放行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+```
+
+### 先启动工作台
+
+Windows 最简单：
 
 ```powershell
 cd attention-desk
 .\start.ps1 -Install
 ```
 
-首次打开使用 `data/demo_messages.json` 合成演示记录。真实微信聊天、下载附件、
-API 密钥和运行时状态均不进入公开仓库。工作台用法见
-[attention-desk/README.md](attention-desk/README.md)。
+`-Install` 会安装前端依赖、创建根目录 `.venv`（如果不存在）并安装后端依赖，然后启动：
 
-本仓库保留了 [@x2y1eesss 的原始抓取器](https://github.com/x2y1eesss/wzu-notice-scraper)
-及其 Git 历史。模块分工和可核对的贡献记录见 [CREDITS.md](CREDITS.md)。
+- 前端开发服务：`http://127.0.0.1:5173`
+- 后端 API：`http://127.0.0.1:8765`
 
----
+首次启动可以直接使用仓库内的 `data/demo_messages.json` 演示数据。真实数据不会因为启动演示而被读取。
 
-## 设计原则
+## Attention Desk 部署
 
-这三条是硬约束，代码里所有取舍都服从它们：
+### Windows 开发模式
 
-1. **绝不并发。** 全程单线程串行。任何时候只有 1 个在飞的请求。
-2. **模拟真实用户。** 完整浏览器请求头、Cookie 会话、Referer 链、随机抖动延时。
-   请求节奏刻意做得不规律（页面间隔 1.8~4.0 秒、资源间隔 0.3~0.9 秒随机）。
-3. **需认证的跳过，不做任何绕过。** 撞上统一身份认证（CAS）或图形验证码就如实记录、
-   跳过、在结果里标明，不尝试登录、不尝试破解验证码。
-
-单站点还有节流：最多 1 个首页 + 3 个列表页，避免给子站造成压力。
-
----
-
-## 快速开始
-
-```bash
-pip install -r requirements.txt   # requests / beautifulsoup4 / lxml
-
-python extract_footer.py        # 1. 解析官网页脚 -> sites.json
-python scrape.py                # 2. 抓取通知条目 -> out/notices.csv  （约 30 分钟）
-python report.py                #    生成总览报告（可选，随时可跑）
-
-python download.py --days 30    # 3. 下载近 30 天的正文图文与附件（约 20 分钟）
-python finalize.py              # 4. 去重 + 甄别验证码/失效附件
-python postprocess.py           # 5. 本地化图片 + 生成离线索引页
-python verify.py --days 30      # 6. 完整性核对（交付前必跑）
-python pack.py                  # 7. 打包成 zip
+```powershell
+cd attention-desk
+.\start.ps1 -Install
 ```
 
-全量抓取约 1650 条通知，串行模式下耗时较长，属预期。**任何一步都可以随时中断，
-重跑会自动跳过已完成部分**（见下文「断点续跑」）。
+端口被占用时：
 
-先跑通再说：`python scrape.py --limit 5` 和 `python download.py --limit 8`
-各花一分钟，能验证网络与解析是否正常。
-
----
-
-## 脚本一览
-
-按执行顺序排列。每个脚本都可以单独运行，也可以只跑其中一段。
-
-| # | 脚本 | 作用 | 主要产出 |
-|---|---|---|---|
-| — | `_common.py` | 公共层：路径、请求会话、限速、日期解析、日志 | — |
-| 1 | `extract_footer.py` | 解析官网页脚，提取各二级单位官网地址 | 根目录 `sites.json`（运行时） |
-| 2 | `scrape.py` | 抓取各站「通知公告」条目 | `out/notices.csv`、`out/site_*.json` |
-| 2.5 | `report.py` | 把抓取结果渲染成总览报告 | `out/温大各部门通知汇总.html` |
-| 3 | `scrape_extra.py` | 补抓首轮取不到通知的特殊站点 | 覆盖 `out/site_*.json` |
-| 4 | `download.py` | 下载正文图文与附件 | `download/<单位>/<通知>/` |
-| 5 | `finalize.py` | manifest 去重 + 附件真伪甄别 | 回写 manifest 与各 `meta.json` |
-| 6 | `postprocess.py` | 本地化图片 + 生成离线索引页 | `download/索引.html` |
-| 7 | `verify.py` | 完整性核对（六节核对报告） | `out/verify_report.txt` |
-| 8 | `pack.py` | 打包成 zip 交付 | `温州大学通知图文库_*.zip` |
-| — | `probe_sites.py` | 探测各站在当前网络下的可达性 | `out/site_reach.json` |
-| — | `build_reach_list.py` | 可达性结果整理成清单 | `out/外网可访问站点清单.md`、`.csv` |
-
-11 个脚本都支持 `-h/--help`，用法说明与「前置依赖是哪一步」会在参数解析阶段就打印出来，
-不需要先跑通前面的步骤才能看到帮助。
-
-`extract_footer.py` 与 `scrape.py` 之间还有个人工可选环节：如果某些站的入口用页脚
-给的地址抓不到内容，在 `scrape_extra.py` 的 `TARGETS` 里补上正确的栏目地址即可。
-
----
-
-## 时间范围
-
-`download.py`、`verify.py` 支持三种范围写法，语义一致：
-
-```bash
-python download.py --days 30                          # 最近 30 天
-python download.py --since 2026-08-22 --until 2026-09-22   # 指定区间
-python download.py                                    # 不加参数 = 全部
+```powershell
+.\start.ps1 -ApiPort 8865 -WebPort 5174
 ```
 
-`--prune` 会把范围外的已下载目录**移动到** `download/_范围外/`（**只移动，不删除**），
-并同步重写 manifest。这样调窄范围不会丢数据，想恢复把目录搬回去即可。
+如果希望使用已经安装好的依赖，可以省略 `-Install`：
 
-参考数据（供估算耗时与体积）：近 30 天约 450 条、近 90 天约 640 条、
-近一年约 1160 条、全量 1650 条左右。平均每条通知约 4.1 张图、1.1 MB。
+```powershell
+.\start.ps1
+```
 
----
+### Linux / macOS 开发模式
 
-## 断点续跑
+在第一个终端启动 API：
 
-所有抓取和下载状态都**逐条落盘**，这是能在串行慢速下安心跑全量的前提：
+```bash
+cd attention-desk
+../.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8765
+```
 
-- `out/site_<域名>.json` —— 每个站点的抓取结果。已存在则跳过，`--force` 强制重抓。
-- `download/_manifest.jsonl` —— 每条通知一行，含状态与资源清单。
-  重跑时按 URL 跳过已完成项。`--retry-failed` 只重试失败/跳过项。
+在第二个终端启动 Vite：
 
-所以中断后直接重跑同一条命令就行，不用记跑到哪了。
+```bash
+cd attention-desk
+ATTENTION_API_PORT=8765 npm run dev -- --host 127.0.0.1 --port 5173
+```
 
----
+然后打开 `http://127.0.0.1:5173`。
 
-## 站点适配说明
+### 本地生产模式
 
-该校站点群是「博达系」CMS。同款 CMS 在不少高校都在用，以下结构特征可直接复用
-（代码里都带了注释说明原因）：
+生产模式将 React 构建产物交给 FastAPI 直接提供，适合在一台电脑上长期运行：
 
-- **页脚分组**：`ul#Foot-box1-content2/3/4/5` 依次是 学院 / 部门 / 其他 / 其他（重复）。
-- **栏目标题不含链接**：`<li class="sh">教师公告</li>`、`<div class="tit">学生公告</div>`
-  这类是纯文本节点。判定规则：不含 `<a>`、不含块级子元素、去掉英文数字后中文长度
-  ≤12 且含「通知/公告/公示」。
-- **日期藏在隐藏节点**（本项目数据质量的关键）：
-  `<div id="time<新闻ID>">2026年07月10日</div>`。节点 id 里的新闻 ID 与文章 URL 里的
-  ID 一一对应，所以能用 ID 精确反查日期，远比按文本模糊匹配可靠。
-- **正文容器**：`<div id="vsb_content">` / `<div class="v_news_content">`。
-- **文章链接四种形态**：`/info/<栏目ID>/<新闻ID>.htm`、`?wbnewsid=`、`?aid=`、
-  `/<新闻ID>.htm`。
-- **附件**：统一走 `/system/_content/download.jsp?urltype=news.DownloadAttachUrl&...`，
-  文件名只能从响应头 `Content-Disposition` 取（URL 本身没有扩展名）。
+```powershell
+cd attention-desk
+npm ci
+..\.venv\Scripts\python.exe -m pip install -r server\requirements.txt
+npm run build
+..\.venv\Scripts\python.exe -m uvicorn server.main:app --host 127.0.0.1 --port 8765
+```
 
-### 日期提取的两个已知口径
+构建完成后打开 `http://127.0.0.1:8765`。FastAPI 会从 `attention-desk/dist/` 提供前端页面，并在同一个端口提供 `/api/*` 接口。
 
-`norm_date()`（`_common.py`）按「完整日期 → `YY.MM.DD` → 月-日」三级降级匹配。有两点需要知道：
+### 常用环境变量
 
-1. **只有「月-日」时补当前年**。少数小站的列表页日期节点不带年份
-   （如 `09-25`），此时会补成当前年。副作用是：一份 2023 年的老通知可能因为
-   被补成 `2026-09-25` 而误入「近 30 天」的范围。影响面很小，但用
-   `--since/--until` 收窄范围时值得留意。
-2. **34 条通知没有日期**（占 1647 条的 2%）。集中在 `温州民俗博物馆`、
-   `浙江省皮革工程重点实验室` 等自建小站 —— 它们的列表页压根没有日期节点，
-   属上游数据缺失，不是解析失效。这些条目日期留空，不参与时间范围过滤。
+| 变量 | 默认值 | 作用 |
+|---|---:|---|
+| `ATTENTION_API_PORT` | `8765` | Vite 开发代理指向的 API 端口 |
+| `ATTENTION_WEB_PORT` | `5173` | Vite 开发服务端口 |
+| `ATTENTION_SAMPLE_PATH` | `data/demo_messages.json` | 演示消息文件路径 |
+| `ATTENTION_INBOX_POLL` | `10` | 转发收件箱轮询秒数；设为 `0` 关闭后台轮询 |
 
-### 三道坎
+## Attention Desk 使用
 
-博达系的附件与正文有三种「取不到」的形态，本项目都实测遇到并做了处理：
+### 1. 选择数据来源
 
-| 坎 | 表现 | 处理 |
+设置面板中有四条互相独立的入口：
+
+| 入口 | 输入 | 适用场景 |
 |---|---|---|
-| CAS 统一身份认证 | 正文页整页跳 `/system/resource/code/auth/cas/clogin.jsp` | 识别后跳过，记 `需认证-跳过` |
-| 图形验证码 | 单文件下载时才弹，返回「请输入验证码下载附件」HTML | `finalize.py` 甄别，记 `need_captcha` |
-| PDF 正文 | `<div id="vsb_content">` 存在但取不到文字，内容在 `showVsbpdfIframe` 内嵌的 PDF 里 | `mode="pdf"` 分支，把 PDF 当附件抓 |
+| 导入文件 | `messages.json` | 已有导出器或其他工具生成的标准消息包 |
+| 聊天记录包 | 微信导出的 `.zip` | 直接使用微信桌面端导出的聊天记录 |
+| 本机微信 | 已安装导出器或本地解密数据库 | 只读读取指定群聊 |
+| 转发收件箱 | WorkBuddy 接收的聊天记录压缩包 | 不想手动选择文件时使用 |
 
-**最可靠的一道预警信号**：落盘文件名是 `download__<hash>.jsp` 就说明没拿到真附件 ——
-扩展名取不到 = 响应头缺 `Content-Disposition` = 拿到的是中间页而不是文件。
-`verify.py` 会把附件目录里的 `.jsp` 数量与甄别结果交叉核对，对不上就报警。
+### 2. 分拣微信群通知
 
----
+1. 打开设置，选择数据来源。
+2. 选择群聊、上传 `messages.json` 或选择聊天记录 zip。
+3. 设置消息日期范围。开始日期和结束日期都是闭区间，可以只填写一端。
+4. 设置分析基准日。它只用于判断“临近、超期”等截止状态。
+5. 选择判断提供方：
+   - 本地 Jev 基线：不上传消息，适合默认使用。
+   - TypeSafe Jev：填写 API key。
+   - DeepSeek：填写 API key，可使用默认 Endpoint。
+   - 自定义 Jev API：填写兼容 `state + questions` 的 Endpoint。
+6. 点击开始分拣。
+7. 在进行中查看 P0–P3、截止状态和待复核项；点击勾选可完成并归档。
+8. 在已完成或超期归档中找回历史事项，必要时撤销完成。
 
-## 产出结构
+日期和优先级的最终计算在本地完成。远程提供方只回答窄问题，不负责直接改写截止日或最终优先级。
 
-### 仓库根目录
+### 3. 监测学院官网
 
-```
-sites.json                 各二级单位官网清单（extract_footer.py 生成，不入库）
-data/sites.json            同一份清单的版本化副本，随仓库分发
-```
+1. 点击左侧地球图标进入“公开来源温州大学 · 学院官网”。
+2. 首次使用点击“检查全部”，也可以选择指定学院。
+3. 使用学院、日期、关键词、分类和“全部 / 未读 / 已读完”筛选。
+4. 列表直接展示公告发布日期；打开详情后才按需读取正文。
+5. 有可靠正文证据时展示活动 / 报名截止日期；无法确认时显示“未识别”。
+6. 标记已读和标记完成是两个独立操作。
+7. 学院列表支持拖动排序，右键菜单可以置顶或取消置顶。
 
-`sites.json` 是运行时产物（已列入 `.gitignore`），`data/sites.json` 是入库的分发副本。
-`_common.load_sites()` 优先读后者 —— **所以 clone 下来不必先联网跑 `extract_footer.py`，
-直接跑 `scrape.py` 就能用**。想更新站点清单，跑一次 `extract_footer.py`，
-再把根目录那份复制到 `data/`。
+官网监测只读取公开页面。认证墙、非温大域名跳转、空正文和请求失败都会展示具体原因。
 
-### `out/`
+### 4. 转发收件箱
 
-```
-notices.csv                全部通知条目（类别,单位,栏目,发布日期,标题,链接,站点,站点状态）
-sites_result.json          每个站点的抓取明细与日志
-site_*.json                单站点结果（断点续跑依据）
-温大各部门通知汇总.html      总览报告（可搜索/筛选）
-verify_report.txt          完整性核对报告
-captcha_attach.json        需验证码/已失效附件明细
-site_reach.json / .csv     可达性探测结果
-```
+将微信聊天记录导出为 zip 后转发给 WorkBuddy。工作台会在本地收件箱目录中发现稳定且通过 zip 校验的文件：
 
-### `download/`
-
-```
-索引.html                  离线浏览页（可搜索、按单位/日期筛选、附件直达）
-_manifest.jsonl            全部下载记录
-README.txt                 交付说明（pack.py 生成）
-<单位>/<日期>__<编号>__<标题>/
-    内容.md                正文（Markdown，图片指向本地）
-    正文.html              正文网页快照（图片已本地化，双击可看图）
-    meta.json              元数据（原站 URL、日期、栏目、图片与附件清单）
-    图片/
-    附件/
+```text
+data/attention-desk/inbox/
 ```
 
-预览离线库：直接双击 `download/索引.html`。如果单文件预览器的相对链接不解析，
-可以起个本地服务：
+前端进入“转发收件箱”后选择条目并开始分拣。文件按内容哈希去重，原始文件只读保留，导入结果写入被 Git 忽略的本地目录。
+
+### 5. 邮件摘要
+
+右上角邮件摘要会根据当前进行中事项生成 HTML 或纯文本预览。收件人保存在浏览器本地，发送前会先展示主题和正文，再经过第二步确认。邮件只包含行动事项、截止日期和摘要，不包含完整聊天原文。
+
+## 官网通知抓取流程
+
+根目录脚本适合生成离线图文库，和 Attention Desk 的轻量官网监测是两种不同用途：
+
+```text
+extract_footer.py
+        ↓
+scrape.py
+        ↓
+report.py（可选）
+        ↓
+download.py
+        ↓
+finalize.py → postprocess.py → verify.py → pack.py
+```
+
+### 典型命令
 
 ```bash
-cd download && python -m http.server 8765 --bind 127.0.0.1
-# 然后打开 http://127.0.0.1:8765/
+# 1. 从温州大学首页页脚更新站点清单
+python extract_footer.py
+
+# 2. 先抓 5 个站点验证网络与解析
+python scrape.py --limit 5
+
+# 3. 全量串行抓取通知列表
+python scrape.py
+
+# 4. 生成列表总览报告
+python report.py
+
+# 5. 先下载近 30 天正文与附件
+python download.py --days 30
+
+# 6. 去重并甄别验证码 / 失效附件
+python finalize.py
+
+# 7. 本地化图片并生成离线索引
+python postprocess.py
+
+# 8. 交付前完整性检查并打包
+python verify.py --days 30
+python pack.py
 ```
 
----
-
-## 核对为什么值得做
-
-`verify.py` 刻意做了两条**互相独立**的核对路径：
-
-1. 读 `_manifest.jsonl`（脚本自己写的自述）
-2. 直接扫磁盘数文件（独立证据）
-
-两者对不上就说明中间有文件丢失或未被记录。实践中这两条路径确实抓出过问题：
-manifest 里 456 行有 4 行是重复写入；14 个 `.jsp` 假附件混在附件目录里；
-2 张配图被误报为「本地缺失」——实际是原站本来就 404，属上游问题。
-
-所以最终结论会把「本项目的失败」和「原站限制」严格分开统计，后者不计入失败。
-以下是本项目实际交付时的核对结论（范围内 452 条通知）：
-
-```
-PASS — 范围内所有通知均完整落地，无缺失文件、无零字节文件。
-
-属原站限制、不计入失败的项目：
-  · 36 篇通知需统一身份认证（CAS），未能下载
-  · 13 个附件原站要求图形验证码，仅取到中间页
-  · 1 个附件原站已失效（服务器返回空内容）
-  · 2 张配图在原站为 404，已失效
-```
-
----
-
-## 可用性探测
-
-校外网络下，部分子站（多为学生线的高频站点）可能连不上或被拦。想先摸清情况：
+### 指定日期和小范围试跑
 
 ```bash
-python probe_sites.py        # 串行探测全部站点
-python build_reach_list.py   # 整理成 Markdown + CSV 清单
+python download.py --since 2026-08-22 --until 2026-09-22
+python download.py --limit 8 --no-assets
+python download.py --dry-run
+python download.py --retry-failed
+python download.py --only rsc
 ```
 
-探测方式与主抓取器一致。结果里「连不上」通常意味着该站仅限校内网络，需要校园网
-或学校 VPN 才能访问 —— 这不是抓取脚本的问题。
+`scrape.py` 和 `download.py` 都支持断点续跑。已有站点结果和 manifest 会被复用；需要强制重新抓取时使用脚本帮助中提供的 `--force` 参数。
 
----
+预览离线库：
 
-## 已知边界
+```bash
+cd download
+python -m http.server 8765 --bind 127.0.0.1
+```
 
-- **串行必然慢**。全量抓取 1600 条通知约 30 分钟，下载近一月图文约 20 分钟。
-  这是遵守「不并发、模拟真实用户」的代价，换的是不被封禁、不打扰子站。
-- **需认证的通知取不到**。这部分通知在校外永远抓不到，属产品边界的诚实告知，
-  不是可以通过技术手段解决的问题（也不应该尝试）。
-- **列表页深度有限**。单站点最多 3 个列表页，这意味着更新很慢的站点只能取到
-  最近几条。调 `--max-lists` 可以加深，但不建议对子站加压。
-- **`out/` 与 `download/` 不入库**（见 `.gitignore`）。仓库里只有脚本，数据在本地生成。
-- **依赖只有三个**：`requests`、`beautifulsoup4`、`lxml`（见 `requirements.txt`）。
-  `lxml` 容易漏装 —— 代码里所有 `BeautifulSoup` 调用都显式指定 `"lxml"` 解析器，
-  缺它会报 `FeatureNotFound: Couldn't find a tree builder`。其余全部是标准库。
-- **站点改版会导致解析失效**。解析逻辑集中在 `scrape.py` 的
-  `find_notice_blocks` / `pick_list_pages` / `extract_items` 和 `download.py` 的
-  `find_content_node`，改版时改这几个函数即可。
+然后打开 `http://127.0.0.1:8765/`。
 
----
+### 日期、类别与状态口径
 
-## 版权
+- **公告发布日期**来自学院列表页；它描述公告什么时候发布。
+- **活动 / 报名截止日期**只在详情按需读取公开正文后提取；没有可靠原文证据时保持“未识别”。
+- **消息日期范围**用于限定参与分拣的聊天消息；只填写开始或结束日期时仍按闭区间过滤。
+- **分析基准日**用于计算事项今日截止、临近、宽裕或超期，和消息日期范围互不替代。
+- 官网的**已读**、**已完成**、群聊事项的**超期归档**分别保存，不共享一个状态字段。
 
-本仓库内的代码以 [MIT License](LICENSE) 开源。
+### 官网抓取器数据口径
 
-所有抓取内容版权归温州大学各二级单位所有，本工具仅作离线归档与检索之用。
-使用时请遵守目标站点的 robots 约定与相关法律法规，控制请求频率。
+抓取器按“站点 → 通知列表 → 单条正文和资源”分步运行。`scrape.py` 先建立列表目录，`download.py` 再依据列表中的日期范围处理正文和附件。这样可以先查看和筛选条目，再决定是否下载较大的图文资源。
+
+博达系站点常见的列表日期隐藏在 `time<新闻ID>` 节点中；代码优先用新闻 ID 对应日期，避免把标题、页脚或版本号中的日期当发布日期。少数独立建设的站点不提供日期，记录会保留空日期。文章链接、栏目和正文模板存在差异，站点改版后解析结果可能需要维护。
+
+附件文件名通常从响应头读取。如果服务器返回验证码或中间页，落盘文件可能是 `.jsp` 页面而非真正附件；`finalize.py` 和 `verify.py` 会帮助发现这类情况。需要认证的页面会记录并跳过，不会尝试绕过访问控制。
+
+### 根目录脚本索引
+
+| 脚本 | 作用 | 主要产出 |
+|---|---|---|
+| `extract_footer.py` | 从温州大学首页页脚发现学院、部门和其他单位站点 | `sites.json`（运行时） |
+| `scrape.py` | 串行抓取通知栏目和文章条目 | `out/notices.csv`、`out/site_*.json` |
+| `scrape_extra.py` | 为特殊站点补抓自定义栏目 | 覆盖对应 `out/site_*.json` |
+| `report.py` | 生成通知列表总览 HTML | `out/温大各部门通知汇总.html` |
+| `download.py` | 下载正文、图片和附件 | `download/<单位>/<通知>/` |
+| `finalize.py` | 去重、核对 manifest、甄别验证码和失效附件 | 更新 `meta.json` 和 manifest |
+| `postprocess.py` | 将远程图片本地化并生成离线索引 | `download/索引.html` |
+| `verify.py` | 从 manifest 和磁盘两条路径核对完整性 | `out/verify_report.txt` |
+| `pack.py` | 将离线图文库打包成 zip | `温州大学通知图文库_*.zip` |
+| `probe_sites.py` | 探测各站点在当前网络下的可达性 | `out/site_reach.json` |
+| `build_reach_list.py` | 将可达性结果整理成清单 | `out/外网可访问站点清单.md`、`.csv` |
+
+每个脚本都支持 `-h` / `--help`。先用 `scrape.py --limit 5` 和 `download.py --limit 8` 做小范围验证，再决定是否运行全量任务。
+
+### 抓取策略与站点边界
+
+官网抓取器遵循三条固定规则：
+
+1. **串行请求**：任何时刻只有一个请求在执行；页面和资源之间带随机延时。
+2. **模拟正常浏览器访问**：使用浏览器请求头、Cookie 会话和文章页 Referer。
+3. **遇到认证就停止深入**：CAS、验证码和需要登录的页面会记录状态并跳过，不尝试绕过。
+
+单站点默认只检查一个首页和有限数量的通知列表页。这样速度会比并发爬虫慢，但能降低对学院站点的压力，也方便中断后继续。
+
+站点群主要使用博达系 CMS，解析器重点适配以下结构：
+
+- 页脚按学院、部门、其他单位分组。
+- 通知栏目标题可能是没有链接的纯文本节点。
+- 列表页常把日期放在 `time<新闻ID>` 隐藏节点中。
+- 文章正文常见于 `#vsb_content` 或 `.v_news_content`。
+- 附件文件名从 `Content-Disposition` 响应头读取。
+
+### 断点续跑与时间范围
+
+抓取和下载状态逐条落盘，程序中断后可以重复运行同一命令：
+
+- `out/site_<域名>.json`：站点抓取结果，已完成站点默认跳过。
+- `download/_manifest.jsonl`：每条通知一行的下载状态和资源清单。
+- `--retry-failed`：只重试上次失败或跳过的项目。
+- `--prune`：把范围外目录移动到 `download/_范围外/`，只移动不删除。
+
+下载和核对支持三种时间范围：
+
+```bash
+python download.py --days 30
+python download.py --since 2026-08-22 --until 2026-09-22
+python download.py
+```
+
+两端日期都是闭区间；不传参数表示处理已有列表中的全部条目。没有日期的上游条目会保留在结果中，但不会被日期范围筛选误收。
+
+### 主要产物
+
+```text
+out/
+├── notices.csv                 # 通知条目汇总
+├── site_<域名>.json             # 单站点断点文件
+├── 温大各部门通知汇总.html       # 可搜索、筛选的列表报告
+└── verify_report.txt           # 完整性核对报告
+
+download/
+├── 索引.html                    # 离线浏览入口
+├── _manifest.jsonl             # 下载记录
+└── <单位>/<日期>__<编号>__<标题>/
+    ├── meta.json
+    ├── 内容.md
+    ├── 正文.html
+    ├── 图片/
+    └── 附件/
+```
+
+`out/` 和 `download/` 是本地生成产物，不提交到 Git。`data/sites.json` 是随仓库分发的站点目录，clone 后可以直接运行 `scrape.py`；需要更新目录时再执行 `extract_footer.py`。
+
+## 数据与隐私
+
+- 微信数据默认只在本机解析和保存。
+- 只有用户主动选择远程提供方时，候选消息片段和可选用户画像才会发送到填写的 API。
+- API key 只在当前请求中使用，不写入仓库文件。
+- `data/attention-desk/`、`data/contacts/`、`vendor/`、`reports/`、`out/`、`download/` 等运行时目录已加入 `.gitignore`。
+- `data/demo_messages.json` 是合成演示数据，不是私人聊天记录。
+- 官网监测只访问公开温州大学域名，不绕过认证，不下载详情页图片和附件。
+- 如果将日志、报告或截图分享给他人，应先确认其中没有联系人、聊天原文、令牌或本地路径。
+
+## 目录结构
+
+```text
+.
+├── attention-desk/                 # React + FastAPI 本地工作台
+│   ├── src/                        # 前端界面
+│   ├── server/                     # API、解析器、官网监测、导入桥
+│   ├── public/                     # 图标等静态资源
+│   ├── start.ps1                   # Windows 一键启动脚本
+│   ├── package.json                # 前端依赖与构建命令
+│   └── README.md                   # 工作台详细手册
+├── .agents/skills/                 # 公告分拣技能与 JEV 规则
+├── data/sites.json                 # 版本化的学院 / 部门站点目录
+├── data/demo_messages.json         # 合成演示消息
+├── scripts/                        # 导出器检查与辅助脚本
+├── extract_footer.py               # 发现站点
+├── scrape.py                       # 抓取通知列表
+├── download.py                     # 下载正文、图片和附件
+├── finalize.py                     # 甄别和去重
+├── postprocess.py                  # 生成离线索引
+├── verify.py                       # 完整性核对
+├── pack.py                         # 交付打包
+├── CREDITS.md                      # 合作与贡献记录
+└── LICENSE
+```
+
+## 测试与质量检查
+
+在仓库根目录运行：
+
+```bash
+python -m pytest attention-desk/server -q
+python -m compileall attention-desk/server
+git diff --check
+```
+
+构建前端：
+
+```bash
+cd attention-desk
+npm ci
+npm run build
+```
+
+验收重点包括：
+
+- 微信文件、zip、本机微信和转发收件箱四条入口。
+- 指定日期范围、分析基准日、完成归档和超期归档。
+- 官网分类、发布日期、按需截止日期和已读完分区。
+- API 提供方切换、低置信度回退和错误提示。
+- 1280、1440、1920 宽度下的桌面布局。
+
+## 常见问题
+
+### `FeatureNotFound: Couldn't find a tree builder`
+
+缺少 `lxml`，重新安装根目录依赖：
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+### 页面打开但 API 请求失败
+
+确认后端 API 已启动，并检查端口是否一致。开发模式下 Vite 默认把 `/api` 代理到 `8765`；如果修改了 API 端口，需要同时设置 `ATTENTION_API_PORT`。
+
+### 端口被占用
+
+Windows：
+
+```powershell
+.\start.ps1 -ApiPort 8865 -WebPort 5174
+```
+
+### 学院官网显示部分可用或需认证
+
+这是来源站点的实际访问状态。部分学院站点只在校园网或 VPN 内可达，认证页面不会被绕过。重新检查或切换网络后可以再次扫描。
+
+### 本机微信入口没有群聊
+
+本机微信入口依赖已安装的导出器或已有兼容解密 SQLite。可以改用设置中的“聊天记录包”上传微信导出的 zip，或直接上传标准 `messages.json`。
+
+### 为什么抓取很慢
+
+官网抓取严格串行，并使用请求间隔、Referer 和断点续跑来降低对来源站点的压力。全量抓取和附件下载的耗时取决于站点数量、网络和资源大小。
+
+### 为什么有些正文或附件没有下载
+
+常见原因包括统一身份认证、单附件验证码、源站返回失效页面、PDF 以 iframe 形式嵌入，或当前网络无法访问该学院站点。程序会把这些情况写入结果和核对报告，不会把认证失败伪装成“没有公告”。
+
+## 贡献与许可
+
+欢迎提交 Issue、改进解析规则、补充站点兼容性测试或完善桌面体验。提交代码前请确认：
+
+1. 不把真实聊天记录、API key、数据库、下载产物或本地运行状态加入 Git。
+2. 不绕过认证、验证码或访问控制。
+3. 抓取逻辑保持串行并尊重目标站点。
+4. 修改 JEV 判断边界时补充回归样本和证据说明。
+
+本仓库从 [x2y1eesss/wzu-notice-scraper](https://github.com/x2y1eesss/wzu-notice-scraper) 派生，合作与模块贡献见 [CREDITS.md](CREDITS.md)。
+
+代码使用 [MIT License](LICENSE)。温州大学各二级单位网站上的通知、图片和附件版权归原发布方所有，使用离线归档时请遵守来源站点规则和适用法律。
