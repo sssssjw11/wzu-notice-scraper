@@ -352,6 +352,10 @@ function App() {
   const [file, setFile] = useState(null);
   const [archiveFile, setArchiveFile] = useState(null);
   const [sourceMode, setSourceMode] = useState('file');
+  const [inboxItems, setInboxItems] = useState([]);
+  const [inboxStatus, setInboxStatus] = useState(null);
+  const [selectedInbox, setSelectedInbox] = useState(null);
+  const [inboxLoading, setInboxLoading] = useState(false);
   const [wechatStatus, setWechatStatus] = useState(null);
   const [wechatGroups, setWechatGroups] = useState([]);
   const [wechatQuery, setWechatQuery] = useState('');
@@ -529,6 +533,36 @@ function App() {
     };
   }, [settingsOpen, sourceMode, wechatQuery]);
 
+  const loadInbox = async (signal) => {
+    setInboxLoading(true);
+    try {
+      const response = await fetch('/api/inbox', { signal });
+      const payload = await response.json();
+      setInboxItems(payload.items || []);
+      setInboxStatus(payload.status || null);
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      setInboxStatus({ watch_dir_exists: false });
+    } finally {
+      setInboxLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!settingsOpen || sourceMode !== 'inbox') return undefined;
+    const controller = new AbortController();
+    loadInbox(controller.signal);
+    // 面板打开期间轮询，微信转发后几秒内自动出现在列表里
+    const timer = window.setInterval(() => {
+      if (!document.hidden) loadInbox();
+    }, 10000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsOpen, sourceMode]);
+
   const runAnalysis = async (overrides = {}) => {
     const effectiveAsOf = overrides.asOf ?? asOf;
     const effectiveFromDate = overrides.fromDate ?? fromDate;
@@ -562,6 +596,27 @@ function App() {
           to_date: effectiveToDate,
           max_candidates: maxCandidates,
           resolve_files: resolveWechatFiles,
+        }),
+      });
+    } else if (sourceMode === 'inbox') {
+      if (!selectedInbox) {
+        setError('请先从转发收件箱选择一条聊天记录');
+        setRunning(false);
+        return;
+      }
+      request = fetch('/api/inbox/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: selectedInbox.filename,
+          provider,
+          api_key: apiKey,
+          endpoint,
+          model,
+          as_of: effectiveAsOf,
+          from_date: effectiveFromDate,
+          to_date: effectiveToDate,
+          max_candidates: maxCandidates,
         }),
       });
     } else if (sourceMode === 'archive') {
@@ -604,6 +659,7 @@ function App() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || '分拣失败');
       setResult(payload);
+      if (sourceMode === 'inbox') loadInbox();
       setSelectedId(payload.items && payload.items.length ? payload.items[0].candidate_id : null);
       setFilter('all');
       setQueueView('active');
@@ -1315,6 +1371,11 @@ function App() {
                   <span>本机微信</span>
                   <small>导出器优先</small>
                 </button>
+                <button className={sourceMode === 'inbox' ? 'source-option selected' : 'source-option'} onClick={() => setSourceMode('inbox')}>
+                  <Inbox size={18} />
+                  <span>转发收件箱</span>
+                  <small>微信转发自动收</small>
+                </button>
               </div>
               {sourceMode === 'file' ? (
                 <button className="upload-drop" onClick={() => fileRef.current && fileRef.current.click()}>
@@ -1336,6 +1397,47 @@ function App() {
                     <button className="button button-quiet archive-clear" onClick={() => setArchiveFile(null)}>
                       <X size={14} /> 移除已选压缩包
                     </button>
+                  )}
+                </div>
+              ) : sourceMode === 'inbox' ? (
+                <div className="archive-source-panel inbox-source-panel">
+                  <div className="wechat-status-line">
+                    <span className={'status-dot ' + (inboxStatus && inboxStatus.watch_dir_exists ? 'local' : 'remote')} />
+                    <span>{inboxStatus ? (inboxStatus.watch_dir_exists ? '正在监视 WorkBuddy 微信转发（每 ' + (inboxStatus.poll_seconds || 0) + ' 秒自动收取）' : '未找到 WorkBuddy 分享目录，转发一条聊天记录试试') : '正在检测转发收件箱…'}</span>
+                    <button className="icon-button small" title="立即刷新" onClick={() => loadInbox()}>
+                      {inboxLoading ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />}
+                    </button>
+                  </div>
+                  <div className="wechat-group-list">
+                    {inboxLoading && !inboxItems.length && <div className="wechat-list-note"><LoaderCircle className="spin" size={15} /> 正在读取收件箱</div>}
+                    {!inboxLoading && !inboxItems.length && <div className="wechat-list-note">收件箱还是空的——在微信里把聊天记录「导出聊天记录」后转发给 WorkBuddy，几秒后会自动出现在这里</div>}
+                    {inboxItems.slice().reverse().map((item) => (
+                      <button
+                        key={item.id}
+                        className={'wechat-group-row ' + (selectedInbox && selectedInbox.filename === item.filename ? 'selected' : '')}
+                        onClick={() => setSelectedInbox(item)}
+                      >
+                        <span className="group-avatar"><Inbox size={15} /></span>
+                        <span className="wechat-group-copy">
+                          <strong>{item.filename}</strong>
+                          <small>
+                            {(item.received_at || '').replace('T', ' ')} · {Math.round((item.size || 0) / 1024)} KB ·{' '}
+                            {item.status === 'imported' ? '已导入' : item.status === 'error' ? '导入失败' : '新到'}
+                          </small>
+                        </span>
+                        {selectedInbox && selectedInbox.filename === item.filename && <Check size={15} />}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedInbox && (
+                    <div className="selected-group-note">
+                      <ShieldCheck size={15} /> 已选择 <strong>{selectedInbox.filename}</strong>
+                      {selectedInbox.status === 'imported' ? '（此前已导入过，可重新分拣）' : ''}
+                      ，分拣只在本机完成，消息包保存到被 Git 忽略的本地目录。
+                    </div>
+                  )}
+                  {selectedInbox && selectedInbox.status === 'error' && (
+                    <div className="selected-group-note error-note">{selectedInbox.error || '上次导入失败'}</div>
                   )}
                 </div>
               ) : (

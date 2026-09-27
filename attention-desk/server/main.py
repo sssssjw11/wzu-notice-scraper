@@ -22,6 +22,7 @@ try:
     from . import mail_digest, profile_store as PROFILE
     from .chat_archive import ChatArchiveError, parse_archive, safe_filename
     from .completion_store import apply_completions, load_completions, set_completion
+    from .inbox import InboxStore
     from .official_monitor import AuthRequired, OfficialMonitor
     from .wechat_bridge import WeChatBridge
 except ImportError:  # pragma: no cover - direct module execution fallback
@@ -29,6 +30,7 @@ except ImportError:  # pragma: no cover - direct module execution fallback
     import profile_store as PROFILE
     from chat_archive import ChatArchiveError, parse_archive, safe_filename
     from completion_store import apply_completions, load_completions, set_completion
+    from inbox import InboxStore
     from official_monitor import AuthRequired, OfficialMonitor
     from wechat_bridge import WeChatBridge
 
@@ -41,6 +43,11 @@ SAMPLE_TRIAGE = SAMPLE_PATH.parent / "announcement_triage" / "triage.json"
 DIST_ROOT = APP_ROOT / "dist"
 # 上传压缩包解出的消息包与附件落到被 Git 忽略的本地目录
 ARCHIVE_ROOT = REPO_ROOT / "data" / "attention-desk" / "archives"
+# 转发收件箱：目录由工作台启动时自建；轮询 WorkBuddy 微信分享落盘目录
+INBOX = InboxStore(
+    REPO_ROOT / "data" / "attention-desk" / "inbox",
+    poll_seconds=int(os.environ.get("ATTENTION_INBOX_POLL", "10")),
+)
 
 
 def load_skill_module():
@@ -1424,28 +1431,28 @@ async def analyze(
     return JSONResponse(result)
 
 
-@app.post("/api/analyze-archive")
-async def analyze_archive(
-    file: UploadFile = File(...),
-    provider: str = Form(default="local"),
-    api_key: str = Form(default=""),
-    endpoint: str = Form(default="https://api.typesafe.ai/v1/systemone"),
-    model: str = Form(default="jev-system-one"),
-    as_of: str | None = Form(default=None),
-    from_date: str | None = Form(default=None),
-    to_date: str | None = Form(default=None),
-    max_candidates: str = Form(default="48"),
-) -> JSONResponse:
-    """新增链路：解析「微信聊天记录」压缩包后进入既有分拣流程。
+async def run_archive_analysis(
+    raw: bytes,
+    filename: str,
+    *,
+    provider: str = "local",
+    api_key: str = "",
+    endpoint: str = "https://api.typesafe.ai/v1/systemone",
+    model: str = "jev-system-one",
+    as_of: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    max_candidates: str = "48",
+) -> dict[str, Any]:
+    """聊天记录 zip → 解析 → 落盘 → 分拣 的共享链路。
 
-    与 ``/api/analyze``（messages.json）和 ``/api/wechat/analyze``（本机微信）
-    互不影响，只在入口处多一段 zip 解析。
+    ``/api/analyze-archive``（上传）与 ``/api/inbox/import``（转发收件箱）
+    共用这一段；入口只负责拿到 zip 字节与文件名。
     """
-    raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="上传的压缩包是空的")
-    if not (file.filename or "").lower().endswith(".zip") and not raw.startswith(b"PK"):
-        raise HTTPException(status_code=400, detail="请上传微信「导出聊天记录」得到的 zip 压缩包")
+        raise HTTPException(status_code=400, detail="压缩包是空的")
+    if not (filename or "").lower().endswith(".zip") and not raw.startswith(b"PK"):
+        raise HTTPException(status_code=400, detail="需要微信「导出聊天记录」得到的 zip 压缩包")
     try:
         parsed = await run_in_threadpool(parse_archive, raw)
     except ChatArchiveError as exc:
@@ -1456,7 +1463,7 @@ async def analyze_archive(
 
     source = prepare_source(parsed["source"], start_date, end_date)
     source["source_kind"] = "archive-upload"
-    slug = f"archive-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{abs(hash(file.filename or 'zip')) % 10000:04d}"
+    slug = f"archive-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{abs(hash(filename or 'zip')) % 10000:04d}"
     bundle = persist_archive_bundle(parsed, slug)
     profile = PROFILE.load_profile()
 
@@ -1483,7 +1490,7 @@ async def analyze_archive(
         provider_meta["read_only_import"] = True
 
     result = make_result(source, items, raw_count, target_date, provider_meta, lookup, profile=profile)
-    result["source"]["archive_filename"] = file.filename
+    result["source"]["archive_filename"] = filename
     result["source"]["source_strategy"] = "chat-archive-zip"
     result["source_export"] = {
         "bundle_dir": bundle["bundle_dir"],
@@ -1496,6 +1503,97 @@ async def analyze_archive(
             for item in bundle["files"]
         ],
     }
+    return result
+
+
+@app.post("/api/analyze-archive")
+async def analyze_archive(
+    file: UploadFile = File(...),
+    provider: str = Form(default="local"),
+    api_key: str = Form(default=""),
+    endpoint: str = Form(default="https://api.typesafe.ai/v1/systemone"),
+    model: str = Form(default="jev-system-one"),
+    as_of: str | None = Form(default=None),
+    from_date: str | None = Form(default=None),
+    to_date: str | None = Form(default=None),
+    max_candidates: str = Form(default="48"),
+) -> JSONResponse:
+    """新增链路：解析「微信聊天记录」压缩包后进入既有分拣流程。
+
+    与 ``/api/analyze``（messages.json）和 ``/api/wechat/analyze``（本机微信）
+    互不影响，只在入口处多一段 zip 解析。
+    """
+    raw = await file.read()
+    result = await run_archive_analysis(
+        raw,
+        file.filename or "upload.zip",
+        provider=provider,
+        api_key=api_key,
+        endpoint=endpoint,
+        model=model,
+        as_of=as_of,
+        from_date=from_date,
+        to_date=to_date,
+        max_candidates=max_candidates,
+    )
+    return JSONResponse(result)
+
+
+# ------------------------------------------------------------- 转发收件箱
+
+
+@app.on_event("startup")
+def start_inbox_watcher() -> None:
+    """启动 WorkBuddy 微信转发监视线程；poll_seconds=0 时自动关闭。"""
+    INBOX.start_watcher()
+
+
+@app.get("/api/inbox")
+def inbox_overview() -> dict[str, Any]:
+    """收件箱概览：每次访问顺带做一次即时扫描，保证刚转发就能看到。"""
+    try:
+        INBOX.scan()
+    except Exception:  # noqa: BLE001 - 概览接口不因扫描失败而挂掉
+        pass
+    return {"status": INBOX.status(), "items": INBOX.list_items()}
+
+
+@app.post("/api/inbox/import")
+async def inbox_import(payload: dict[str, Any] = Body(...)) -> JSONResponse:
+    """从收件箱导入指定 zip 并进入既有分拣流程。
+
+    入参 ``filename`` 必填（来自 ``GET /api/inbox`` 的条目）；其余可选参数
+    与 ``/api/analyze-archive`` 一致。导入成功后在 manifest 里标记 imported。
+    """
+    filename = str(payload.get("filename") or "").strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail="缺少 filename，请先从收件箱列表选择")
+    try:
+        INBOX.scan()  # 即时扫一次，避免 watcher 间隔内刚转发的记录扑空
+        if not any(item.get("filename") == filename for item in INBOX.list_items()):
+            raise HTTPException(status_code=400, detail=f"收件箱里没有 {filename}，请刷新列表")
+        raw = await run_in_threadpool(INBOX.read_zip, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        result = await run_archive_analysis(
+            raw,
+            filename,
+            provider=str(payload.get("provider") or "local"),
+            api_key=str(payload.get("api_key") or ""),
+            endpoint=str(payload.get("endpoint") or "https://api.typesafe.ai/v1/systemone"),
+            model=str(payload.get("model") or "jev-system-one"),
+            as_of=payload.get("as_of"),
+            from_date=payload.get("from_date"),
+            to_date=payload.get("to_date"),
+            max_candidates=str(payload.get("max_candidates") or "48"),
+        )
+    except HTTPException as exc:
+        INBOX.mark_imported(filename, error=str(exc.detail))
+        raise
+    INBOX.mark_imported(filename)
+    result["source"]["source_kind"] = "inbox-import"
+    result["source"]["source_strategy"] = "workbuddy-share-inbox"
     return JSONResponse(result)
 
 

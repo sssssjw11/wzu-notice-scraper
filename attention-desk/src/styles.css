@@ -978,6 +978,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .wechat-group-copy small { margin-top: 3px; color: var(--muted); font-size: 11px; }
 .wechat-list-note { min-height: 64px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--muted); font-size: 11px; }
 .selected-group-note { display: flex; align-items: flex-start; gap: 6px; margin-top: 9px; padding: 8px; border: 1px solid var(--green); background: var(--green-soft); color: #0e5837; font-size: 11px; line-height: 1.45; }
+.selected-group-note.error-note { border-color: var(--red); background: var(--red-soft); color: var(--red); }
 
 /* 聊天记录压缩包链路（新增数据源） */
 .archive-source-panel { display: grid; gap: 0; }
