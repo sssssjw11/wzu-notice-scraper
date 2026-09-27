@@ -204,6 +204,7 @@ npm run build
 | `ATTENTION_API_PORT` | `8765` | Vite 开发代理指向的 API 端口 |
 | `ATTENTION_WEB_PORT` | `5173` | Vite 开发服务端口 |
 | `ATTENTION_SAMPLE_PATH` | `data/demo_messages.json` | 演示消息文件路径 |
+| `ATTENTION_INBOX_WATCH_DIR` | `~/.workbuddy/app/tmp/chat-history` | WorkBuddy 微信转发 zip 的监视目录 |
 | `ATTENTION_INBOX_POLL` | `10` | 转发收件箱轮询秒数；设为 `0` 关闭后台轮询 |
 
 ## Attention Desk 使用
